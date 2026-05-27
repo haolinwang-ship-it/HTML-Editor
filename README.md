@@ -44,7 +44,7 @@ html-collab-editor/
 
 ## Status
 
-Early development. Currently building the local prototype.
+v0.1 deployed at **[html-collab-editor.yuzycheng.partykit.dev](https://html-collab-editor.yuzycheng.partykit.dev)**. Internal testing.
 
 ## Local development
 
