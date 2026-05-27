@@ -128,14 +128,23 @@
   .step {
     background: var(--panel-2);
     border-radius: var(--radius-sm);
-    padding: 14px 14px 16px;
+    padding: 16px 14px 18px;
   }
-  .step .n {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--subtle);
-    letter-spacing: 0.02em;
-    margin-bottom: 6px;
+  .step .icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    border: var(--rule-w) solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+  }
+  .step .icon svg {
+    width: 18px;
+    height: 18px;
   }
   .step .t {
     font-size: var(--text-sm);
@@ -323,32 +332,55 @@
     <div class="eyebrow">For revising AI-generated HTML</div>
     <h1>Edit and comment on<br>AI-generated HTML — together.</h1>
     <p class="lead">
-      You get a beautiful HTML from your AI but want to tweak the text or
-      flag what should change. Upload the file, share the link, your team
-      edits text and leaves comments — then <strong>export the package back
-      to the AI</strong> for the next pass.
+      Drop in an HTML file, share the link, edit with your team — then
+      download the result or send it back to your AI.
     </p>
 
     <div class="steps">
       <div class="step">
-        <div class="n">STEP 01</div>
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12"/>
+            <path d="M7 8l5-5 5 5"/>
+            <path d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/>
+          </svg>
+        </div>
         <div class="t">Upload</div>
-        <div class="d">Drop the .html file you got from your AI.</div>
+        <div class="d">Drop your .html file.</div>
       </div>
       <div class="step">
-        <div class="n">STEP 02</div>
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="18" cy="5" r="2.5"/>
+            <circle cx="6" cy="12" r="2.5"/>
+            <circle cx="18" cy="19" r="2.5"/>
+            <path d="M8.5 13.3l7 4.4"/>
+            <path d="M15.5 6.3l-7 4.4"/>
+          </svg>
+        </div>
         <div class="t">Share</div>
-        <div class="d">Send the room link — no signup needed.</div>
+        <div class="d">Send the link — no signup.</div>
       </div>
       <div class="step">
-        <div class="n">STEP 03</div>
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+          </svg>
+        </div>
         <div class="t">Edit &amp; comment</div>
-        <div class="d">Rewrite text inline, leave notes anywhere.</div>
+        <div class="d">Rewrite text, leave notes.</div>
       </div>
       <div class="step">
-        <div class="n">STEP 04</div>
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <path d="M7 10l5 5 5-5"/>
+            <path d="M12 15V3"/>
+          </svg>
+        </div>
         <div class="t">Export</div>
-        <div class="d">Hand the edits + comments back to your AI.</div>
+        <div class="d">Download HTML or hand off to AI.</div>
       </div>
     </div>
 
@@ -376,7 +408,7 @@
   </div>
 </section>
 
-<div class="footer">A small tool for editing AI-generated HTML, together.</div>
+<div class="footer">A small tool for editing HTML, together.</div>
 
 <script>
   const startBtn = document.getElementById('start-btn');
