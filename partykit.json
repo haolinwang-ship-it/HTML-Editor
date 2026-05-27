@@ -1,0 +1,12 @@
+{
+  "$schema": "https://www.partykit.io/schema.json",
+  "name": "html-collab-editor",
+  "main": "party/server.ts",
+  "serve": {
+    "path": "web",
+    "browserTTL": 0,
+    "edgeTTL": 60,
+    "singlePageApp": false
+  },
+  "compatibilityDate": "2024-09-01"
+}

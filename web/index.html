@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML Editor · Collaborative revision for AI-generated HTML</title>
+<link rel="stylesheet" href="./styles/design.css">
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* ── Top bar ─────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    height: 56px;
+    padding: 0 32px;
+    background: var(--paper);
+  }
+  .topbar .brand {
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .topbar .brand .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    background: var(--signal);
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .topbar .right .small {
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  /* ── Stage (centered card) ───────────────────── */
+  .stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px 64px;
+  }
+  .card {
+    width: 100%;
+    max-width: 760px;
+    background: var(--panel);
+    border: var(--rule-w) solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 48px 48px 40px;
+  }
+  @media (max-width: 600px) {
+    .card { padding: 32px 24px 28px; }
+  }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: var(--text-xs);
+    color: var(--signal-ink);
+    background: var(--signal-soft);
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+    margin-bottom: 20px;
+  }
+  .card h1 {
+    font-size: var(--text-display);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+  }
+  .card .lead {
+    font-size: var(--text-md);
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 560px;
+    margin-bottom: 32px;
+  }
+  .card .lead strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Steps ─────────────────────────────────── */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: repeat(2, 1fr); }
+  }
+  .step {
+    background: var(--panel-2);
+    border-radius: var(--radius-sm);
+    padding: 14px 14px 16px;
+  }
+  .step .n {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--subtle);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  .step .t {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .step .d {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ── Drop + actions (side-by-side) ─────────── */
+  .upload-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: stretch;
+  }
+  @media (max-width: 560px) {
+    .upload-row { grid-template-columns: 1fr; }
+  }
+  .drop {
+    border: 1.5px dashed var(--rule-strong);
+    background: var(--panel-2);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: background 100ms, border-color 100ms;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .drop:hover { background: var(--signal-soft); border-color: var(--signal); }
+  .drop.dragover { background: var(--signal-soft); border-color: var(--signal); }
+  .drop .icon {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    border: var(--rule-w) solid var(--rule-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .drop .txt .big {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .drop .txt .small {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .start-col {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+  }
+  .start-col .btn { width: 100%; justify-content: center; }
+  .start-col .meta {
+    font-size: 11px;
+    color: var(--subtle);
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  /* ── Recent files ──────────────────────────── */
+  .recent {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: var(--rule-w) solid var(--rule);
+  }
+  .recent .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .recent .head h3 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .recent .head .clear {
+    background: transparent;
+    border: none;
+    color: var(--subtle);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .recent .head .clear:hover { color: var(--error); background: var(--panel-2); }
+  .recent ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+  }
+  .recent li a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border: var(--rule-w) solid transparent;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--ink);
+    transition: background 80ms, border-color 80ms;
+  }
+  .recent li a:hover {
+    background: var(--panel);
+    border-color: var(--rule-strong);
+  }
+  .recent li .ic {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    background: var(--panel);
+    border: var(--rule-w) solid var(--rule-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .recent li .name {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  .recent li .ago {
+    font-size: 11px;
+    color: var(--subtle);
+    flex-shrink: 0;
+  }
+  .recent li .del {
+    background: transparent;
+    border: none;
+    color: var(--subtle);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 80ms;
+  }
+  .recent li:hover .del { opacity: 1; }
+  .recent li .del:hover { color: var(--error); background: var(--panel-2); }
+
+  /* ── Footer ─────────────────────────────────── */
+  .footer {
+    text-align: center;
+    padding: 16px 24px 28px;
+    font-size: 12px;
+    color: var(--subtle);
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="brand"><span class="dot"></span>HTML Editor</div>
+  <div class="right">
+    <span class="small">v0.1 · local dev</span>
+  </div>
+</div>
+
+<!-- Stage -->
+<section class="stage">
+  <div class="card">
+    <div class="eyebrow">For revising AI-generated HTML</div>
+    <h1>Edit and comment on<br>AI-generated HTML — together.</h1>
+    <p class="lead">
+      You get a beautiful HTML from your AI but want to tweak the text or
+      flag what should change. Upload the file, share the link, your team
+      edits text and leaves comments — then <strong>export the package back
+      to the AI</strong> for the next pass.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="n">STEP 01</div>
+        <div class="t">Upload</div>
+        <div class="d">Drop the .html file you got from your AI.</div>
+      </div>
+      <div class="step">
+        <div class="n">STEP 02</div>
+        <div class="t">Share</div>
+        <div class="d">Send the room link — no signup needed.</div>
+      </div>
+      <div class="step">
+        <div class="n">STEP 03</div>
+        <div class="t">Edit &amp; comment</div>
+        <div class="d">Rewrite text inline, leave notes anywhere.</div>
+      </div>
+      <div class="step">
+        <div class="n">STEP 04</div>
+        <div class="t">Export</div>
+        <div class="d">Hand the edits + comments back to your AI.</div>
+      </div>
+    </div>
+
+    <div class="upload-row">
+      <label for="file-input" class="drop" id="drop-zone">
+        <div class="icon">↑</div>
+        <div class="txt">
+          <div class="big">Drop your HTML file here</div>
+          <div class="small">or click anywhere in this box · .html / .htm · up to 2 MB</div>
+        </div>
+        <input type="file" id="file-input" accept=".html,.htm" style="display:none">
+      </label>
+      <div class="start-col">
+        <button class="btn btn-primary btn-lg" id="start-btn">Start →</button>
+      </div>
+    </div>
+
+    <div class="recent" id="recent" style="display:none;">
+      <div class="head">
+        <h3>Recent files</h3>
+        <button class="clear" id="recent-clear">Clear all</button>
+      </div>
+      <ul id="recent-list"></ul>
+    </div>
+  </div>
+</section>
+
+<div class="footer">A small tool for editing AI-generated HTML, together.</div>
+
+<script>
+  const startBtn = document.getElementById('start-btn');
+  const drop = document.getElementById('drop-zone');
+  const input = document.getElementById('file-input');
+
+  // Start just opens the picker — no scroll dance, no animation.
+  startBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    input.click();
+  });
+
+  ['dragenter','dragover'].forEach(ev =>
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      drop.classList.add('dragover');
+    })
+  );
+  ['dragleave','drop'].forEach(ev =>
+    drop.addEventListener(ev, e => {
+      e.preventDefault();
+      if (ev === 'dragleave' && drop.contains(e.relatedTarget)) return;
+      drop.classList.remove('dragover');
+    })
+  );
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  input.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) handleFile(f);
+  });
+
+  // Page-wide drag highlights the drop zone, so a file dropped anywhere works.
+  ['dragenter','dragover'].forEach(ev =>
+    document.body.addEventListener(ev, e => {
+      e.preventDefault();
+      drop.classList.add('dragover');
+    })
+  );
+  document.body.addEventListener('dragleave', e => {
+    if (e.target === document.body) drop.classList.remove('dragover');
+  });
+  document.body.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+
+  function handleFile(f) {
+    if (!/\.html?$/i.test(f.name)) {
+      alert('Please drop an .html or .htm file.');
+      return;
+    }
+    if (f.size > 2 * 1024 * 1024) {
+      alert('File too large. Max 2 MB for v0.1.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const roomId = generateRoomId();
+      try {
+        sessionStorage.setItem('hce-init-html-' + roomId, e.target.result);
+        sessionStorage.setItem('hce-init-name-' + roomId, f.name);
+      } catch (err) {
+        alert('Could not stash file in sessionStorage: ' + err.message);
+        return;
+      }
+      rememberRoom({ roomId, filename: f.name });
+      location.href = './room.html?room=' + roomId;
+    };
+    reader.readAsText(f);
+  }
+
+  function generateRoomId() {
+    const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+    let id = '';
+    for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    return id;
+  }
+
+  // ─── Recent files ────────────────────────────
+  const RECENT_KEY = 'hce-recent-files';
+  const RECENT_MAX = 12;
+
+  function loadRecent() {
+    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function saveRecent(list) {
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); }
+    catch {}
+  }
+  function rememberRoom({ roomId, filename }) {
+    const now = Date.now();
+    const list = loadRecent().filter(x => x.roomId !== roomId);
+    list.unshift({ roomId, filename, createdAt: now, lastOpenedAt: now });
+    saveRecent(list);
+  }
+  function removeRoom(roomId) {
+    saveRecent(loadRecent().filter(x => x.roomId !== roomId));
+    renderRecent();
+  }
+  function clearAllRoom() {
+    if (!confirm('Remove all recent files from this list? (Server copies are kept.)')) return;
+    localStorage.removeItem(RECENT_KEY);
+    renderRecent();
+  }
+  function timeAgo(ts) {
+    const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    const d = Math.floor(h / 24);
+    if (d < 30) return d + 'd ago';
+    const mo = Math.floor(d / 30);
+    return mo + 'mo ago';
+  }
+  function renderRecent() {
+    const list = loadRecent();
+    const wrap = document.getElementById('recent');
+    const ul = document.getElementById('recent-list');
+    if (!list.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    ul.innerHTML = '';
+    list.forEach(item => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <a href="./room.html?room=${encodeURIComponent(item.roomId)}">
+          <span class="ic">↻</span>
+          <span class="name" title="${escapeAttr(item.filename)}">${escapeText(item.filename)}</span>
+          <span class="ago">${timeAgo(item.lastOpenedAt || item.createdAt)}</span>
+          <button class="del" title="Remove from list">×</button>
+        </a>
+      `;
+      li.querySelector('.del').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeRoom(item.roomId);
+      });
+      ul.appendChild(li);
+    });
+  }
+  function escapeText(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function escapeAttr(s) {
+    return escapeText(s).replace(/"/g, '&quot;');
+  }
+  document.getElementById('recent-clear').addEventListener('click', clearAllRoom);
+  renderRecent();
+</script>
+
+</body>
+</html>
