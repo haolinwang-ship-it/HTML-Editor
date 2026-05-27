@@ -17,11 +17,10 @@
 ## How it works
 
 ```
-   ┌─────────┐      ┌────────────────┐      ┌────────────┐      ┌─────────┐
-   │   AI    │ ───▶ │  HTML Editor   │ ───▶ │   Export   │ ───▶ │   AI    │
-   │ writes  │      │ team edits +   │      │ HTML or    │      │ revises │
-   │  HTML   │      │   comments     │      │ MD prompt  │      │   pass  │
-   └─────────┘      └────────────────┘      └────────────┘      └─────────┘
+   ┌──────────────┐      ┌──────────────────────┐      ┌────────────────┐
+   │  Upload any  │ ───▶ │  Edit · Comment ·    │ ───▶ │  Download HTML │
+   │  HTML file   │      │     Collaborate      │      │  or send to AI │
+   └──────────────┘      └──────────────────────┘      └────────────────┘
 ```
 
 ## ✨ Features
@@ -41,6 +40,7 @@ AI-generated HTML (slides, PRDs, docs, landing pages) is hard to revise:
 - Direct editing in raw code is too low-level for non-developers
 - Round-tripping every small tweak through chat is slow
 - There's no good way to leave structural feedback that the AI can act on
+- No shared workspace for teams to review and revise the HTML together
 
 This tool sits between the AI and the team: humans review and annotate, then hand the whole package back to the AI for one more pass.
 
