@@ -5,6 +5,7 @@
 **Collaborative editor for AI-generated HTML — edit, comment, hand back to AI.**
 
 [![Live demo](https://img.shields.io/badge/▸_try_it-html--collab--editor.yuzycheng.partykit.dev-ff5a1f?style=for-the-badge)](https://html-collab-editor.yuzycheng.partykit.dev)
+[![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-yuzycheng.github.io%2FHTML--Editor-0969da?style=for-the-badge)](https://yuzycheng.github.io/HTML-Editor/)
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-fde68a?style=flat-square)](#)
