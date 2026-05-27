@@ -13,9 +13,25 @@
 import * as Y from 'https://esm.sh/yjs@13.6.20';
 import YPartyKitProvider from 'https://esm.sh/y-partykit@0.0.32/provider';
 
-// PartyKit dev serves the frontend on the same origin (default :1999),
-// so location.host points at the WebSocket endpoint too.
-const PARTYKIT_HOST = location.host;
+// Decide which PartyKit host to talk to.
+//
+// Three deploy targets coexist:
+//   1. Local dev    — partykit dev serves frontend + ws on localhost:1999
+//   2. PartyKit URL — frontend + ws on html-collab-editor.yuzycheng.partykit.dev
+//   3. GitHub Pages — frontend on yuzycheng.github.io, ws still has to go to
+//                     the PartyKit deployment
+//
+// For (1) and (2) we use `location.host` (same-origin). For (3) and any
+// future custom domain we hardcode the PartyKit prod URL.
+const PARTYKIT_PROD = 'html-collab-editor.yuzycheng.partykit.dev';
+const PARTYKIT_HOST = (() => {
+  const h = location.hostname;
+  const sameOrigin =
+    h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' ||
+    /^192\.168\./.test(h) || /^10\./.test(h) ||
+    h.endsWith('.partykit.dev');
+  return sameOrigin ? location.host : PARTYKIT_PROD;
+})();
 
 export async function connectCollab(state, handlers) {
   const yDoc = new Y.Doc();
