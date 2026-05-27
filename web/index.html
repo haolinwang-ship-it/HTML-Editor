@@ -40,6 +40,33 @@
     font-size: var(--text-sm);
     color: var(--muted);
   }
+  .beta-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 999px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .beta-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 18px;
+    font-size: 12px;
+    color: #78350f;
+    line-height: 1.5;
+  }
+  .beta-banner .b-icon { flex-shrink: 0; }
+  .beta-banner a { color: #78350f; text-decoration: underline; }
 
   /* ── Stage (centered card) ───────────────────── */
   .stage {
@@ -284,15 +311,21 @@
 
 <!-- Top bar -->
 <div class="topbar">
-  <div class="brand"><span class="dot"></span>HTML Editor</div>
+  <div class="brand"><span class="dot"></span>HTML Editor<span class="beta-pill">BETA</span></div>
   <div class="right">
-    <span class="small">v0.1 · local dev</span>
+    <a class="small" href="https://github.com/yuzycheng/HTML-Editor" target="_blank" rel="noopener" style="color:var(--muted); text-decoration:none;">GitHub ↗</a>
   </div>
 </div>
 
 <!-- Stage -->
 <section class="stage">
   <div class="card">
+    <div class="beta-banner">
+      <span class="b-icon">🚧</span>
+      <div>
+        <strong>Early beta.</strong> This is v0.1 — actively developing. Things may break. Found a bug or have an idea? <a href="https://github.com/yuzycheng/HTML-Editor/issues" target="_blank" rel="noopener">Let me know on GitHub</a>.
+      </div>
+    </div>
     <div class="eyebrow">For revising AI-generated HTML</div>
     <h1>Edit and comment on<br>AI-generated HTML — together.</h1>
     <p class="lead">
