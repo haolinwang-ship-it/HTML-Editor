@@ -270,6 +270,14 @@ export function buildIframeScript() {
     '<line x1="17" y1="10" x2="17" y2="14"/>' +
     '<line x1="15" y1="12" x2="19" y2="12"/>'
   );
+  // [ADDITION] Palette icon for the Style button
+  var ICON_STYLE = svgIcon(
+    '<circle cx="13.5" cy="6.5" r=".5"/>' +
+    '<circle cx="17.5" cy="10.5" r=".5"/>' +
+    '<circle cx="8.5" cy="7.5" r=".5"/>' +
+    '<circle cx="6.5" cy="12.5" r=".5"/>' +
+    '<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.6 1.5-1.5 0-.4-.2-.8-.4-1.1-.3-.3-.4-.6-.4-1 0-.8.6-1.4 1.4-1.4H16c3.3 0 6-2.7 6-6 0-5.5-4.5-10-10-10z"/>'
+  );
 
   function ensureTools() {
     if (tools) return tools;
@@ -329,6 +337,7 @@ export function buildIframeScript() {
     } else {
       tools.innerHTML =
           '<button class="dup" title="Duplicate">' + ICON_PLUS + '</button>'
+        + '<button class="style" title="Style (color · size · weight · align · radius · padding)">' + ICON_STYLE + '</button>'
         + '<button class="del" title="Delete">' + ICON_X + '</button>';
       tools.querySelector('.dup').addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
@@ -338,6 +347,12 @@ export function buildIframeScript() {
           id: toolsTarget.getAttribute('data-block-id')
         }, '*');
         hideTools();
+      });
+      // [ADDITION] Style button — toggles the style panel
+      tools.querySelector('.style').addEventListener('click', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        if (!toolsTarget) return;
+        toggleStylePanel(toolsTarget);
       });
       tools.querySelector('.del').addEventListener('click', function(e) {
         e.preventDefault(); e.stopPropagation();
@@ -395,6 +410,28 @@ export function buildIframeScript() {
   // Esc deselects.
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') hideTools();
+  });
+  // ─── [ADDITION · Delete-key delete] ───
+  // Backspace / Delete on the currently-selected block removes it.
+  // Cmd+Backspace / Cmd+Delete always removes (even when cursor is in text).
+  // Plain Backspace inside an editable text leaf is left alone so users
+  // can still delete characters normally.
+  document.addEventListener('keydown', function(e) {
+    if (mode !== 'edit') return;
+    if (!toolsTarget) return;
+    var isDelKey = (e.key === 'Delete' || e.key === 'Backspace');
+    if (!isDelKey) return;
+    var meta = e.metaKey || e.ctrlKey;
+    var inText = e.target && e.target.closest
+      && e.target.closest('[data-hce-text][contenteditable]');
+    if (inText && !meta) return; // let contenteditable handle char delete
+    e.preventDefault();
+    e.stopPropagation();
+    window.parent.postMessage({
+      type: 'request-block-delete',
+      id: toolsTarget.getAttribute('data-block-id')
+    }, '*');
+    hideTools();
   });
   // Re-pin when the iframe scrolls so toolbar doesn't drift.
   window.addEventListener('scroll', function() {
@@ -656,8 +693,254 @@ export function buildIframeScript() {
     window.parent.postMessage({ type: 'iframe-mousedown' }, '*');
   }, true);
 
+  // ─── [ADDITION] Style panel ───────────────────────────────────────
+  // Floating dark popover with: text color · font size · align · padding.
+  // Anchored to the currently-selected element, toggled by 🎨 toolbar button.
+  //
+  // Defined as a function, called AFTER applyMode/ready below. Any error
+  // here can't break the core editor.
+  var stylePanel = null;
+  var styleTarget = null;
+  var hideStylePanel; // forward decl
+
+  // ─── 样式 Undo / Redo 栈 ───
+  // 独立于 Yjs UndoManager（只追踪文字）。
+  // Cmd+Z 优先撤销样式；样式栈空了再 fall through 到 Yjs（撤销文字）。
+  var styleHistory = [];
+  var styleHistoryPtr = -1;
+  var preChangeSnap = null;
+  var preChangeTarget = null;
+  var commitDebounceTimer = null;
+  var STYLE_HISTORY_LIMIT = 100;
+
+  function captureStyleSnap(el) {
+    var snap = [{ el: el, css: el.style.cssText }];
+    el.querySelectorAll('*').forEach(function(c) {
+      snap.push({ el: c, css: c.style.cssText });
+    });
+    return snap;
+  }
+  function applyStyleSnap(snap) {
+    snap.forEach(function(s) {
+      if (s.el && s.el.style) s.el.style.cssText = s.css;
+    });
+  }
+  function maybeStartStyleChange(target) {
+    if (!target) return;
+    if (preChangeSnap && preChangeTarget === target) return; // 已经在记录
+    if (preChangeSnap) commitStyleChange(); // 切到新目标 — 先把前一组提交
+    preChangeSnap = captureStyleSnap(target);
+    preChangeTarget = target;
+  }
+  function debouncedCommitStyle() {
+    if (commitDebounceTimer) clearTimeout(commitDebounceTimer);
+    commitDebounceTimer = setTimeout(commitStyleChange, 500);
+  }
+  function commitStyleChange() {
+    if (commitDebounceTimer) { clearTimeout(commitDebounceTimer); commitDebounceTimer = null; }
+    if (!preChangeSnap || !preChangeTarget) return;
+    var after = captureStyleSnap(preChangeTarget);
+    // 截掉 redo 路径
+    styleHistory.length = styleHistoryPtr + 1;
+    styleHistory.push({ before: preChangeSnap, after: after });
+    if (styleHistory.length > STYLE_HISTORY_LIMIT) {
+      styleHistory.shift();
+    } else {
+      styleHistoryPtr++;
+    }
+    preChangeSnap = null;
+    preChangeTarget = null;
+  }
+  function undoStyleHistory() {
+    commitStyleChange(); // 提交任何 pending
+    if (styleHistoryPtr < 0) return false;
+    applyStyleSnap(styleHistory[styleHistoryPtr].before);
+    styleHistoryPtr--;
+    return true;
+  }
+  function redoStyleHistory() {
+    if (styleHistoryPtr >= styleHistory.length - 1) return false;
+    styleHistoryPtr++;
+    applyStyleSnap(styleHistory[styleHistoryPtr].after);
+    return true;
+  }
+  // 拦截 Cmd+Z / Cmd+Shift+Z 在 capture 阶段，比原 handler 先跑
+  document.addEventListener('keydown', function(e) {
+    var meta = e.metaKey || e.ctrlKey;
+    if (!meta || !e.key || e.key.toLowerCase() !== 'z') return;
+    var handled = e.shiftKey ? redoStyleHistory() : undoStyleHistory();
+    if (handled) {
+      e.preventDefault();
+      e.stopImmediatePropagation(); // 不让原 handler 再 forward 到 Yjs
+    }
+  }, true);
+  function rgbToHex(c) {
+    if (!c) return '#000000';
+    if (c.charAt(0) === '#') return c.length === 7 ? c : '#000000';
+    var m = c.match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/);
+    if (!m) return '#000000';
+    function h(n){ return (+n).toString(16).padStart(2,'0'); }
+    return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+  }
+  function pxNum(s) {
+    if (!s) return 0;
+    var m = String(s).match(/(-?\\d+(\\.\\d+)?)/);
+    return m ? parseFloat(m[1]) : 0;
+  }
+  function ensureStylePanel() {
+    if (stylePanel) return stylePanel;
+    var styleEl = document.createElement('style');
+    styleEl.id = '__hce-style-panel-css';
+    styleEl.textContent = ''
+      + '#__hce-style-panel{position:fixed;z-index:2147483647;width:280px;'
+      + 'background:#1f1d2e;color:#e8e6f0;border:1px solid rgba(255,255,255,.08);'
+      + 'border-radius:12px;padding:14px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;'
+      + 'box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;}'
+      + '#__hce-style-panel label{display:block;color:#9b97b0;margin-bottom:4px;font-size:11px;}'
+      + '#__hce-style-panel .row{margin-bottom:10px;}'
+      + '#__hce-style-panel input[type=text]{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,monospace;box-sizing:border-box;}'
+      + '#__hce-style-panel input[type=color]{width:32px;height:32px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;cursor:pointer;padding:0;}'
+      + '#__hce-style-panel .colorrow{display:flex;gap:8px;align-items:center;}'
+      + '#__hce-style-panel input[type=range]{width:100%;}'
+      + '#__hce-style-panel select{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;}'
+      + '#__hce-style-panel .alignrow{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;}'
+      + '#__hce-style-panel .alignrow button{background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#cfcadf;padding:6px 0;border-radius:6px;cursor:pointer;font-size:11px;}'
+      + '#__hce-style-panel .alignrow button.on{background:#5a4fcf;color:#fff;}'
+      + '#__hce-style-panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}'
+      + '#__hce-style-panel .head .ttl{font-size:13px;font-weight:600;}'
+      + '#__hce-style-panel .head button{background:none;border:none;color:#9b97b0;cursor:pointer;font-size:18px;line-height:1;}';
+    document.head.appendChild(styleEl);
+    stylePanel = document.createElement('div');
+    stylePanel.id = '__hce-style-panel';
+    stylePanel.innerHTML =
+        '<div class="head"><span class="ttl">样式</span><button class="close" title="关闭">×</button></div>'
+      + '<div class="row"><label>文字颜色</label><div class="colorrow"><input type="color" class="sp-color"><input type="text" class="sp-color-txt"></div></div>'
+      + '<div class="row"><label class="sp-fs-l">字号 <span class="sp-fs-v">14</span>px</label><input type="range" class="sp-fs" min="10" max="120"></div>'
+      + '<div class="row"><label>对齐</label><div class="alignrow">'
+        + '<button data-align="left">left</button>'
+        + '<button data-align="center">center</button>'
+        + '<button data-align="right">right</button>'
+        + '<button data-align="justify">justify</button>'
+      + '</div></div>'
+      + '<div class="row"><label class="sp-pd-l">内边距 <span class="sp-pd-v">0</span>px</label><input type="range" class="sp-pd" min="0" max="80"></div>';
+    document.body.appendChild(stylePanel);
+    // [FIX] 阻止面板内的事件冒泡到 document — 否则点滑块松手时 click 事件
+    // 会冒泡到 iframe-injection 的全局 click handler，触发 hideTools 把面板关了
+    stylePanel.addEventListener('click', function(e) { e.stopPropagation(); });
+    stylePanel.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+    function apply(prop, val) {
+      if (!styleTarget) return;
+      // 在第一次改之前快照 before-state
+      maybeStartStyleChange(styleTarget);
+      // camelCase → kebab-case (fontSize → font-size 等)
+      var cssProp = prop.replace(/[A-Z]/g, function(m) { return '-' + m.toLowerCase(); });
+      styleTarget.style.setProperty(cssProp, val, 'important');
+      // color 要无脑打给所有后代元素 — 中间层 <a><strong> 等可能也有自己的 color
+      if (prop === 'color') {
+        styleTarget.querySelectorAll('*').forEach(function(child) {
+          child.style.setProperty('color', val, 'important');
+        });
+      }
+      debouncedCommitStyle();
+    }
+    stylePanel.querySelector('.close').onclick = hideStylePanel;
+    var cIn = stylePanel.querySelector('.sp-color');
+    var cTx = stylePanel.querySelector('.sp-color-txt');
+    cIn.oninput = function() { apply('color', cIn.value); cTx.value = cIn.value; };
+    cTx.onchange = function() { apply('color', cTx.value); cIn.value = rgbToHex(cTx.value); };
+    var fs = stylePanel.querySelector('.sp-fs');
+    fs.oninput = function() {
+      apply('fontSize', fs.value + 'px');
+      stylePanel.querySelector('.sp-fs-v').textContent = fs.value;
+    };
+    stylePanel.querySelectorAll('.alignrow button').forEach(function(btn) {
+      btn.onclick = function() {
+        apply('textAlign', btn.dataset.align);
+        stylePanel.querySelectorAll('.alignrow button').forEach(function(b){ b.classList.toggle('on', b === btn); });
+      };
+    });
+    var pd = stylePanel.querySelector('.sp-pd');
+    pd.oninput = function() {
+      apply('padding', pd.value + 'px');
+      stylePanel.querySelector('.sp-pd-v').textContent = pd.value;
+    };
+    return stylePanel;
+  }
+  function populateStylePanel(el) {
+    var p = ensureStylePanel();
+    var cs = getComputedStyle(el);
+    var hexC = rgbToHex(cs.color);
+    p.querySelector('.sp-color').value = hexC;
+    p.querySelector('.sp-color-txt').value = cs.color;
+    var fs = pxNum(cs.fontSize);
+    p.querySelector('.sp-fs').value = fs;
+    p.querySelector('.sp-fs-v').textContent = fs;
+    p.querySelectorAll('.alignrow button').forEach(function(b){
+      b.classList.toggle('on', b.dataset.align === cs.textAlign);
+    });
+    var pd = pxNum(cs.padding);
+    p.querySelector('.sp-pd').value = pd;
+    p.querySelector('.sp-pd-v').textContent = pd;
+  }
+  function positionStylePanel(el) {
+    var p = ensureStylePanel();
+    var r = el.getBoundingClientRect();
+    var top = r.bottom + 10;
+    var left = r.left;
+    // Keep on screen
+    var maxLeft = window.innerWidth - 300;
+    if (left > maxLeft) left = maxLeft;
+    if (top + 480 > window.innerHeight) top = Math.max(8, r.top - 488);
+    p.style.top = top + 'px';
+    p.style.left = Math.max(8, left) + 'px';
+  }
+  function showStylePanel(el) {
+    styleTarget = el;
+    var p = ensureStylePanel();
+    populateStylePanel(el);
+    positionStylePanel(el);
+    p.style.display = 'block';
+  }
+  hideStylePanel = function() {
+    if (stylePanel) stylePanel.style.display = 'none';
+    styleTarget = null;
+  };
+  function toggleStylePanel(el) {
+    if (stylePanel && stylePanel.style.display === 'block' && styleTarget === el) {
+      hideStylePanel();
+    } else {
+      showStylePanel(el);
+    }
+  }
+  // [defensive] 初始化样式面板的副作用（包了 try/catch，
+  // 任何错误都不影响主编辑器）
+  function __hceInitStylePanel() {
+    try {
+      // 包装 hideTools 以便也关闭样式面板（如果 hideTools 已经存在）
+      if (typeof hideTools === 'function') {
+        var _origHideTools = hideTools;
+        hideTools = function() {
+          try { _origHideTools(); } catch (e) {}
+          try { hideStylePanel(); } catch (e) {}
+        };
+      }
+      window.addEventListener('scroll', function() {
+        if (styleTarget && stylePanel && stylePanel.style.display === 'block') {
+          try { positionStylePanel(styleTarget); } catch (e) {}
+        }
+      }, true);
+    } catch (e) {
+      console.warn('[hce] style panel init error:', e);
+    }
+  }
+
+  // ─── 主初始化（必须先跑，不能被 style panel 影响） ───
   applyMode('edit');
   window.parent.postMessage({ type: 'ready' }, '*');
+
+  // 现在再绑 style panel 的全局事件
+  __hceInitStylePanel();
 })();
 </scr` + `ipt>`;
 }
