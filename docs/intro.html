@@ -144,10 +144,13 @@
   /* ── Problem grid ────────────────────── */
   .problem-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
   }
-  @media (max-width: 700px) {
+  @media (max-width: 900px) {
+    .problem-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 600px) {
     .problem-grid { grid-template-columns: 1fr; }
   }
   .problem-card {
@@ -364,16 +367,11 @@
     </div>
     <div class="problem-card">
       <div class="n">02</div>
-      <h3>Round-tripping is slow</h3>
-      <p>"Make this paragraph shorter." Wait. Reload. "Now the third bullet." Every small tweak is a full conversation with the AI.</p>
+      <h3>Chat is slow and vague for revision</h3>
+      <p>Every tweak is a full round-trip to the AI. And broad feedback like "tighten this paragraph" or "this section feels dense" has nowhere to anchor.</p>
     </div>
     <div class="problem-card">
       <div class="n">03</div>
-      <h3>No good way to leave structural feedback</h3>
-      <p>"This whole section feels too dense." Where do you write that? In a chat? In a sticky note? The AI needs context to act on it.</p>
-    </div>
-    <div class="problem-card">
-      <div class="n">04</div>
       <h3>No shared workspace for teams</h3>
       <p>There's no editor where multiple people can review AI-generated HTML together, see each other's notes, and converge on the next revision.</p>
     </div>
