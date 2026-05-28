@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HTML Editor — Edit and comment on HTML, together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@200;300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Lemon yellow Swiss palette (matches our deck) */
+    --paper:    #fafaf8;
+    --ink:      #0a0a0a;
+    --grey-1:   #f0f0ee;
+    --grey-2:   #d4d4d2;
+    --grey-3:   #737373;
+    --accent:   #FFD500;
+    --accent-on:#0a0a0a;
+    --text-primary:   #0a0a0a;
+    --text-secondary: rgba(10,10,10,.66);
+    --text-helper:    rgba(10,10,10,.46);
+    --border-subtle:  #e0e0e0;
+
+    --sans: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --sans-zh: 'Noto Sans SC', 'PingFang SC', sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    font-family: var(--sans), var(--sans-zh);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 96px 56px 96px;
+  }
+
+  /* ── Chrome-min (top page header) ───────── */
+  .chrome-min {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-helper);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 16px;
+    margin-bottom: 80px;
+  }
+
+  /* ── Section rhythm ─────────────────────── */
+  section { margin-bottom: 128px; }
+  section:last-of-type { margin-bottom: 0; }
+
+  /* Kicker / mono label above section titles */
+  .t-meta {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+    margin-bottom: 18px;
+    display: block;
+  }
+
+  /* Large hero title — weight 200 Swiss */
+  h1 {
+    font-family: var(--sans), var(--sans-zh);
+    font-weight: 200;
+    font-size: clamp(48px, 7.2vw, 104px);
+    line-height: .96;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+    margin-bottom: 32px;
+    max-width: 18ch;
+  }
+  h1 .italic { font-style: italic; font-weight: 300; }
+
+  /* Section titles */
+  h2 {
+    font-family: var(--sans), var(--sans-zh);
+    font-weight: 200;
+    font-size: clamp(36px, 4.2vw, 64px);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 24px;
+    max-width: 22ch;
+  }
+  h2 .italic { font-style: italic; font-weight: 300; }
+  h2 .mark {
+    background: var(--accent);
+    color: var(--accent-on);
+    padding: 0 .18em;
+  }
+
+  h3 {
+    font-family: var(--sans), var(--sans-zh);
+    font-weight: 500;
+    font-size: 20px;
+    line-height: 1.25;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+
+  /* Lead paragraph below section titles */
+  .lead {
+    font-family: var(--sans), var(--sans-zh);
+    font-size: 21px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    max-width: 64ch;
+    font-weight: 400;
+  }
+
+  p {
+    font-family: var(--sans), var(--sans-zh);
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+  }
+  p strong { color: var(--ink); font-weight: 600; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── Problem grid (3 cards) ─────────────── */
+  .problem-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 48px;
+  }
+  @media (max-width: 800px) { .problem-grid { grid-template-columns: 1fr; } }
+  .problem-card {
+    background: var(--grey-1);
+    padding: 32px 28px 36px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 280px;
+  }
+  .problem-card.accent {
+    background: var(--accent);
+  }
+  .problem-card.accent .num,
+  .problem-card.accent h3,
+  .problem-card.accent p { color: var(--accent-on); }
+  .problem-card .num {
+    font-family: var(--sans);
+    font-weight: 200;
+    font-size: 64px;
+    line-height: .9;
+    color: var(--ink);
+    margin-bottom: 24px;
+  }
+
+  /* ── Features (6 cells) ─────────────────── */
+  .features {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr 1fr;
+    gap: 14px;
+    margin-top: 48px;
+  }
+  @media (max-width: 800px) { .features { grid-template-columns: 1fr; grid-template-rows: auto; } }
+  .feat-cell {
+    background: var(--grey-1);
+    padding: 24px 22px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .feat-cell.accent {
+    background: var(--accent);
+  }
+  .feat-cell.accent .t-meta,
+  .feat-cell.accent h3,
+  .feat-cell.accent p { color: var(--accent-on); }
+  .feat-cell .t-meta {
+    margin-bottom: 0;
+    font-size: 11px;
+  }
+  .feat-cell h3 {
+    font-weight: 600;
+    font-size: 18px;
+    margin-bottom: 0;
+  }
+  .feat-cell p {
+    font-size: 14.5px;
+    line-height: 1.55;
+    margin-bottom: 0;
+  }
+
+  /* ── Steps (4 numbered rows) ────────────── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    margin-top: 48px;
+  }
+  .step-row {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 32px;
+    align-items: start;
+    padding: 28px 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .step-row:last-child {
+    border-bottom: 2px solid var(--accent);
+  }
+  .step-row .num {
+    font-family: var(--sans);
+    font-weight: 200;
+    font-size: 56px;
+    line-height: .9;
+    color: var(--ink);
+  }
+  .step-row .body h3 {
+    font-size: 22px;
+    margin-bottom: 6px;
+  }
+  .step-row .body p {
+    font-size: 16px;
+    margin-bottom: 0;
+    color: var(--text-secondary);
+  }
+
+  /* ── Quick spec table (demo-friendly) ───── */
+  table.spec {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 48px;
+    font-family: var(--sans), var(--sans-zh);
+  }
+  table.spec th, table.spec td {
+    padding: 16px 18px;
+    text-align: left;
+    border-top: 1px solid var(--border-subtle);
+    font-size: 16px;
+    vertical-align: top;
+  }
+  table.spec thead th {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+    border-top: none;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 14px;
+    font-weight: 500;
+  }
+  table.spec tbody td:first-child {
+    font-weight: 500;
+    color: var(--ink);
+    width: 28%;
+  }
+  table.spec tbody td:last-child {
+    color: var(--text-secondary);
+  }
+  table.spec tbody tr:last-child td {
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  /* ── CTA links ──────────────────────────── */
+  .cta-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 40px;
+  }
+  @media (max-width: 700px) { .cta-links { grid-template-columns: 1fr; } }
+  .cta-card {
+    background: var(--grey-1);
+    padding: 28px 28px 32px;
+    text-decoration: none;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: background 120ms;
+  }
+  .cta-card:hover { background: var(--accent); }
+  .cta-card .label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+  }
+  .cta-card .url {
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--ink);
+    word-break: break-all;
+  }
+  .cta-card .note {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+  }
+
+  /* ── Footer ─────────────────────────────── */
+  footer {
+    margin-top: 120px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+  }
+  footer a { color: var(--text-secondary); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+
+  /* ── Inline accent for in-text highlights ── */
+  .accent-text { color: var(--ink); background: var(--accent); padding: 0 .2em; }
+
+  /* ── Beta / status chip (hero) ──────────── */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: var(--accent-on);
+    padding: 6px 14px 6px 10px;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .chip .dot {
+    width: 8px; height: 8px;
+    background: var(--ink);
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* ── Stats row (under hero) ─────────────── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    margin-top: 48px;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  @media (max-width: 700px) { .stats-row { grid-template-columns: 1fr; } }
+  .stat {
+    padding: 24px 24px 24px 0;
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stat:last-child { border-right: none; padding-right: 0; }
+  .stat .stat-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+  }
+  .stat .stat-num {
+    font-family: var(--sans);
+    font-weight: 200;
+    font-size: 48px;
+    line-height: .95;
+    color: var(--ink);
+  }
+  .stat .stat-num .unit { font-size: .42em; font-weight: 300; margin-left: 4px; color: var(--text-secondary); }
+  .stat .stat-num.yellow {
+    background: var(--accent);
+    color: var(--accent-on);
+    padding: 0 .22em;
+    display: inline-block;
+    align-self: flex-start;
+  }
+  .stat .stat-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* ── Side-bar quote (thesis emphasis) ───── */
+  .pull-quote {
+    border-left: 6px solid var(--accent);
+    padding: 8px 0 8px 24px;
+    margin: 32px 0 0;
+    font-family: var(--sans), var(--sans-zh);
+    font-weight: 300;
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--ink);
+    max-width: 56ch;
+  }
+  .pull-quote .by {
+    display: block;
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-helper);
+  }
+
+  /* ── Yellow side panel (used in "the product") ── */
+  .side-panel {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 28px;
+    margin-top: 40px;
+    align-items: stretch;
+  }
+  @media (max-width: 800px) { .side-panel { grid-template-columns: 1fr; } }
+  .side-panel .main-col p { font-size: 17px; }
+  .side-panel .accent-col {
+    background: var(--accent);
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .side-panel .accent-col .t-meta {
+    color: rgba(10,10,10,.62);
+    margin-bottom: 4px;
+  }
+  .side-panel .accent-col .big {
+    font-family: var(--sans);
+    font-weight: 200;
+    font-size: 42px;
+    line-height: .95;
+    color: var(--accent-on);
+  }
+  .side-panel .accent-col .big .italic { font-style: italic; font-weight: 300; }
+  .side-panel .accent-col p {
+    font-size: 14px;
+    color: var(--accent-on);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  /* ── Step accent ───────────────────────── */
+  .step-row.accent {
+    background: var(--accent);
+    border-top-color: var(--ink);
+    padding: 28px 24px;
+    margin: 12px 0;
+  }
+  .step-row.accent .num,
+  .step-row.accent .body h3,
+  .step-row.accent .body p { color: var(--accent-on); }
+
+  /* ── Spec table: yellow highlight row ──── */
+  table.spec tbody tr.accent td {
+    background: var(--accent);
+    color: var(--accent-on);
+    font-weight: 500;
+  }
+  table.spec tbody tr.accent td:first-child { color: var(--accent-on); }
+  table.spec tbody tr.accent td:last-child { color: rgba(10,10,10,.78); }
+
+  ::selection { background: var(--accent); color: var(--accent-on); }
+</style>
+</head>
+<body>
+
+<div class="chrome-min">
+  <div>HTML EDITOR · FIELD NOTE</div>
+  <div>v0.1 · 2026.05</div>
+</div>
+
+<!-- ───────── HERO ───────── -->
+<section>
+  <span class="chip"><span class="dot"></span>Beta · v0.1 · live now</span>
+  <span class="t-meta">A small tool for revising HTML</span>
+  <h1>Edit and comment<br>on HTML —<br><span class="italic">together.</span></h1>
+  <p class="lead">
+    Drop in any HTML file, share the link, your team edits text and leaves
+    comments in real time. When you're done, download the result or hand
+    the package back to your AI for the next pass.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat">
+      <span class="stat-label">Modes</span>
+      <div class="stat-num">2 <span class="unit">edit · comment</span></div>
+      <span class="stat-note">Toggle between rewriting text and leaving anchored notes.</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Signup required</span>
+      <div class="stat-num yellow">None</div>
+      <span class="stat-note">Pick a nickname, drop in, share the link. That's it.</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Sync latency</span>
+      <div class="stat-num">~200<span class="unit">ms</span></div>
+      <span class="stat-note">Across all browsers in the room, conflict-free via Yjs.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── THESIS ───────── -->
+<section>
+  <span class="t-meta">The thesis</span>
+  <h2>Generating beautiful HTML is <span class="mark">easy</span>.<br>Revising it together is the <span class="italic">hard part.</span></h2>
+  <p class="lead">
+    AI can produce a polished document in seconds. Iterating on it as a
+    team — picking the exact paragraph to rewrite, flagging what should
+    change, agreeing on a tweak — is where everything slows down.
+  </p>
+
+  <div class="pull-quote">
+    "We have great tools for <em>making</em> HTML. We don't have a great tool for <em>revising</em> it as a group."
+    <span class="by">— the gap this tool tries to fill</span>
+  </div>
+</section>
+
+<!-- ───────── PROBLEM ───────── -->
+<section>
+  <span class="t-meta">The problem · three pains</span>
+  <h2>You get a beautiful first draft.<br>Now what?</h2>
+  <p class="lead">
+    Three things break down the moment more than one person needs to touch the file.
+  </p>
+
+  <div class="problem-grid">
+    <div class="problem-card">
+      <div class="num">01</div>
+      <div>
+        <h3>Editing HTML isn't beginner-friendly.</h3>
+        <p>For anyone not comfortable in code, raw HTML is intimidating. One stray bracket and the layout breaks. Most people screenshot and write "change this" instead.</p>
+      </div>
+    </div>
+    <div class="problem-card accent">
+      <div class="num">02</div>
+      <div>
+        <h3>Chat is slow and vague.</h3>
+        <p>Every tweak is a round-trip to the AI. Broad feedback like "tighten this paragraph" or "this section feels dense" has nowhere to anchor.</p>
+      </div>
+    </div>
+    <div class="problem-card accent">
+      <div class="num">03</div>
+      <div>
+        <h3>No shared workspace for teams.</h3>
+        <p>No editor where reviewers can mark things up together, see each other's notes, and converge on what the AI should change next.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── WHAT IT IS ───────── -->
+<section>
+  <span class="t-meta">The product</span>
+  <h2>A small browser tool<br>between your AI and your team.</h2>
+
+  <div class="side-panel">
+    <div class="main-col">
+      <p>Drop in any HTML. Share the room link with anyone — no signup needed. Edit text inline, leave comments anchored to one element or the whole document, watch your teammates' changes appear in real time.</p>
+      <p>When you're done, export <strong>two ways</strong>: a clean HTML file you can ship, or a Markdown prompt bundling every edit and comment that you can feed back to Claude / GPT for the next revision.</p>
+    </div>
+    <div class="accent-col">
+      <span class="t-meta">Built for</span>
+      <div class="big">Teams<br><span class="italic">on a deadline.</span></div>
+      <p>Three people, one document, ten minutes — instead of a Slack thread that never converges.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── FEATURES ───────── -->
+<section>
+  <span class="t-meta">What it does</span>
+  <h2>The whole loop in one browser tab.</h2>
+
+  <div class="features">
+    <div class="feat-cell">
+      <span class="t-meta">01 · Edit</span>
+      <h3>Inline text editing</h3>
+      <p>Click any text and rewrite. Markers like "1." or "•" are editable as plain characters too.</p>
+    </div>
+    <div class="feat-cell">
+      <span class="t-meta">02 · Structure</span>
+      <h3>Add or remove blocks</h3>
+      <p>＋ / ✕ toolbar duplicates or deletes paragraphs, cards, table rows and columns.</p>
+    </div>
+    <div class="feat-cell accent">
+      <span class="t-meta">03 · Comment</span>
+      <h3>Anchor or general notes</h3>
+      <p>One element, multi-select, or whole-document. The AI gets the context.</p>
+    </div>
+    <div class="feat-cell">
+      <span class="t-meta">04 · Collab</span>
+      <h3>Real-time sync</h3>
+      <p>Yjs CRDT — conflict-free. Two people in the same paragraph won't clobber each other.</p>
+    </div>
+    <div class="feat-cell">
+      <span class="t-meta">05 · Undo</span>
+      <h3>Real undo and redo</h3>
+      <p>⌘Z / ⌘⇧Z. Works for text and structural changes. Won't undo your collaborator's edits.</p>
+    </div>
+    <div class="feat-cell accent">
+      <span class="t-meta">06 · Export</span>
+      <h3>Both ways</h3>
+      <p>Clean HTML download, or Markdown prompt for any AI. Closes the loop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── HOW TO USE ───────── -->
+<section>
+  <span class="t-meta">How to use it</span>
+  <h2>Four steps. Five minutes.</h2>
+
+  <div class="steps">
+    <div class="step-row">
+      <div class="num">01</div>
+      <div class="body">
+        <h3>Upload</h3>
+        <p>Drop your .html file onto the landing page. Anything generated by an AI or written by hand works.</p>
+      </div>
+    </div>
+    <div class="step-row">
+      <div class="num">02</div>
+      <div class="body">
+        <h3>Share</h3>
+        <p>Click Share, copy the link, send it. Anyone with the link can join — no signup needed.</p>
+      </div>
+    </div>
+    <div class="step-row">
+      <div class="num">03</div>
+      <div class="body">
+        <h3>Edit and comment</h3>
+        <p>Toggle between Edit and Comment modes. Rewrite text in place, leave anchored or general notes, hash things out with your team in real time.</p>
+      </div>
+    </div>
+    <div class="step-row accent">
+      <div class="num">04</div>
+      <div class="body">
+        <h3>Export — the loop closes here</h3>
+        <p>Pick Download HTML for a clean file, or Hand off to AI to copy a Markdown prompt bundling your edits and every comment. Drop it back into Claude / GPT for the next revision.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── SPEC TABLE (good for demo of table ops) ───────── -->
+<section>
+  <span class="t-meta">Quick spec</span>
+  <h2>The numbers worth knowing.</h2>
+
+  <table class="spec">
+    <thead>
+      <tr>
+        <th>Spec</th>
+        <th>Value</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Upload limit</td>
+        <td>2 MB per .html</td>
+        <td>Client-side check. Nothing uploaded to a server.</td>
+      </tr>
+      <tr>
+        <td>Sync latency</td>
+        <td>~200 ms</td>
+        <td>Across browsers, via Yjs CRDT over WebSocket.</td>
+      </tr>
+      <tr>
+        <td>Signup</td>
+        <td>None</td>
+        <td>Pick a nickname, you're in.</td>
+      </tr>
+      <tr>
+        <td>Persistence</td>
+        <td>Per-room snapshot</td>
+        <td>Reopen the room URL, the doc is still there.</td>
+      </tr>
+      <tr class="accent">
+        <td>Cost to you</td>
+        <td>Free</td>
+        <td>Hosted on GitHub Pages + PartyKit free tier.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ───────── CTA ───────── -->
+<section>
+  <span class="t-meta">Try it now</span>
+  <h2>Take it for a <span class="italic">spin.</span></h2>
+  <p class="lead">
+    Open the demo, drop any HTML in, edit something with the person next
+    to you. That's the whole pitch.
+  </p>
+
+  <div class="cta-links">
+    <a class="cta-card" href="https://yuzycheng.github.io/HTML-Editor/" target="_blank" rel="noopener">
+      <span class="label">Live demo</span>
+      <span class="url">yuzycheng.github.io/HTML-Editor</span>
+      <span class="note">Drop a file, share the link, start editing.</span>
+    </a>
+    <a class="cta-card" href="https://github.com/yuzycheng/HTML-Editor" target="_blank" rel="noopener">
+      <span class="label">Source · GitHub</span>
+      <span class="url">github.com/yuzycheng/HTML-Editor</span>
+      <span class="note">MIT licensed. Issues and PRs welcome.</span>
+    </a>
+  </div>
+</section>
+
+<footer>
+  <span>HTML Editor · v0.1 · MIT</span>
+  <span>By <a href="https://github.com/yuzycheng" target="_blank">@yuzycheng</a></span>
+</footer>
+
+</body>
+</html>
