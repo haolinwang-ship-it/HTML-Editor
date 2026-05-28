@@ -810,10 +810,12 @@ export function buildIframeScript() {
       'border:1px solid #e7e5e4;border-radius:12px;padding:0;',
       'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
       'box-shadow:0 12px 32px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06);display:none;}',
-      // Header
+      // Header (also the drag handle — cursor + user-select reflect that)
       '#__hce-style-panel .sp-head{display:flex;justify-content:space-between;align-items:center;',
-      'padding:12px 14px;border-bottom:1px solid #f0efed;}',
-      '#__hce-style-panel .sp-head .ttl{font-size:13px;font-weight:600;color:#1a1a1a;}',
+      'padding:12px 14px;border-bottom:1px solid #f0efed;cursor:move;user-select:none;}',
+      '#__hce-style-panel.dragging{box-shadow:0 16px 40px rgba(15,23,42,.18),0 4px 10px rgba(15,23,42,.08);}',
+      '#__hce-style-panel .sp-head .ttl{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px;}',
+      '#__hce-style-panel .sp-head .ttl::before{content:"⋮⋮";color:#a8a29e;letter-spacing:-2px;font-size:14px;}',
       '#__hce-style-panel .sp-head .close{background:none;border:none;color:#a8a29e;cursor:pointer;',
       'font-size:18px;line-height:1;padding:2px 6px;border-radius:4px;}',
       '#__hce-style-panel .sp-head .close:hover{background:#f5f5f4;color:#1a1a1a;}',
@@ -842,20 +844,28 @@ export function buildIframeScript() {
       'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;}',
       '#__hce-style-panel .sw:hover{transform:scale(1.08);box-shadow:0 2px 6px rgba(0,0,0,.12);}',
       '#__hce-style-panel .sw.on{outline:2px solid #1a1a1a;outline-offset:2px;}',
+      // Recent (custom picks saved) — same look as palette but smaller row
+      '#__hce-style-panel .recent-label{margin-top:10px;}',
+      '#__hce-style-panel .recent{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;}',
       // Custom expander
       '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:12px;',
-      'cursor:pointer;padding:6px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;}',
+      'cursor:pointer;padding:8px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;}',
       '#__hce-style-panel .more-toggle:hover{color:#1a1a1a;}',
       '#__hce-style-panel .more-toggle .chev{transition:transform 160ms;}',
       '#__hce-style-panel .more-toggle.open .chev{transform:rotate(90deg);}',
-      '#__hce-style-panel .custom-row{display:none;align-items:center;gap:8px;padding-top:10px;}',
-      '#__hce-style-panel .custom-row.show{display:flex;}',
-      '#__hce-style-panel input[type=color]{width:32px;height:32px;border:1px solid #d6d3d1;border-radius:6px;',
-      'background:transparent;cursor:pointer;padding:0;flex-shrink:0;}',
-      '#__hce-style-panel input[type=text]{flex:1;min-width:0;background:#fafaf9;border:1px solid #d6d3d1;',
-      'color:#1a1a1a;padding:7px 10px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,monospace;',
-      'box-sizing:border-box;}',
-      '#__hce-style-panel input[type=text]:focus{outline:none;border-color:#1a1a1a;box-shadow:0 0 0 3px rgba(26,26,26,.06);}',
+      // HSV picker — drag-only
+      '#__hce-style-panel .picker{display:none;flex-direction:column;gap:10px;padding-top:10px;}',
+      '#__hce-style-panel .picker.show{display:flex;}',
+      '#__hce-style-panel .sv{position:relative;width:100%;height:140px;border-radius:8px;cursor:crosshair;',
+      'background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),#f00;',
+      'overflow:hidden;border:1px solid #e7e5e4;}',
+      '#__hce-style-panel .sv-thumb{position:absolute;width:14px;height:14px;border-radius:50%;',
+      'border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);',
+      'transform:translate(-50%,-50%);pointer-events:none;}',
+      '#__hce-style-panel .hue{position:relative;width:100%;height:14px;border-radius:7px;cursor:pointer;',
+      'background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border:1px solid #e7e5e4;}',
+      '#__hce-style-panel .hue-thumb{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;',
+      'background:#fff;border:2px solid #1a1a1a;transform:translate(-50%,-50%);pointer-events:none;}',
       // Range sliders + alignment buttons
       '#__hce-style-panel .row-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}',
       '#__hce-style-panel .row-head .label{margin-bottom:0;}',
@@ -895,8 +905,15 @@ export function buildIframeScript() {
           + '<button class="reset-btn sp-reset" title="Revert to original color">↶ Reset</button>'
         + '</div>'
         + '<div class="palette sp-palette">' + paletteHTML + '</div>'
+        + '<div class="sp-recent-wrap" style="display:none;">'
+          + '<span class="label recent-label">Recent</span>'
+          + '<div class="recent sp-recent"></div>'
+        + '</div>'
         + '<button class="more-toggle sp-more-toggle" type="button"><span class="chev">▸</span> Custom</button>'
-        + '<div class="custom-row sp-custom"><input type="color" class="sp-color"><input type="text" class="sp-color-txt" placeholder="#000000"></div>'
+        + '<div class="picker sp-picker">'
+          + '<div class="sv sp-sv"><div class="sv-thumb sp-sv-thumb"></div></div>'
+          + '<div class="hue sp-hue"><div class="hue-thumb sp-hue-thumb"></div></div>'
+        + '</div>'
       + '</div>'
 
       + '<div class="row">'
@@ -914,17 +931,44 @@ export function buildIframeScript() {
         + '</div>'
       + '</div>'
 
-      + '<div class="row">'
-        + '<div class="row-head"><span class="label">Padding</span><span class="val"><span class="sp-pd-v">0</span>px</span></div>'
-        + '<input type="range" class="sp-pd" min="0" max="80">'
-      + '</div>'
-
       + '</div>';
     document.body.appendChild(stylePanel);
     // [FIX] 阻止面板内的事件冒泡到 document — 否则点滑块松手时 click 事件
     // 会冒泡到 iframe-injection 的全局 click handler，触发 hideTools 把面板关了
     stylePanel.addEventListener('click', function(e) { e.stopPropagation(); });
     stylePanel.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+    // ─── Drag the panel by its header ───
+    (function makeDraggable() {
+      var head = stylePanel.querySelector('.sp-head');
+      var startX, startY, startLeft, startTop;
+      head.addEventListener('mousedown', function(e) {
+        // Ignore drag if user clicked the close button
+        if (e.target.closest('.close')) return;
+        e.preventDefault();
+        var r = stylePanel.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        startLeft = r.left;  startTop = r.top;
+        stylePanel.classList.add('dragging');
+        function move(ev) {
+          var nx = startLeft + (ev.clientX - startX);
+          var ny = startTop  + (ev.clientY - startY);
+          // Clamp inside viewport (leave a small margin)
+          var w = stylePanel.offsetWidth, h = stylePanel.offsetHeight;
+          nx = Math.max(8, Math.min(window.innerWidth  - w - 8, nx));
+          ny = Math.max(8, Math.min(window.innerHeight - h - 8, ny));
+          stylePanel.style.left = nx + 'px';
+          stylePanel.style.top  = ny + 'px';
+        }
+        function up() {
+          stylePanel.classList.remove('dragging');
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+        }
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      });
+    })();
 
     function apply(prop, val) {
       if (!styleTarget) return;
@@ -974,47 +1018,179 @@ export function buildIframeScript() {
       refreshCurrentIndicator(c);
     });
 
-    // Custom expander
+    // Custom expander → reveals HSV picker
     var moreBtn = stylePanel.querySelector('.sp-more-toggle');
-    var customRow = stylePanel.querySelector('.sp-custom');
+    var picker = stylePanel.querySelector('.sp-picker');
     moreBtn.addEventListener('click', function() {
       var open = moreBtn.classList.toggle('open');
-      customRow.classList.toggle('show', open);
+      picker.classList.toggle('show', open);
+      // When opening, sync picker thumbs to current color so it's not a fresh red square.
+      if (open && styleTarget) {
+        var cur = rgbToHex(getComputedStyle(styleTarget).color);
+        setPickerFromHex(cur);
+      }
     });
 
-    // Custom color picker + text input (secondary path)
-    var cIn = stylePanel.querySelector('.sp-color');
-    var cTx = stylePanel.querySelector('.sp-color-txt');
-    cIn.oninput = function() {
-      apply('color', cIn.value);
-      cTx.value = cIn.value;
-      markActiveSwatch(cIn.value);
-      refreshCurrentIndicator(cIn.value);
-    };
-    cTx.onchange = function() {
-      apply('color', cTx.value);
-      cIn.value = rgbToHex(cTx.value);
-      markActiveSwatch(cTx.value);
-      refreshCurrentIndicator(cTx.value);
-    };
+    // HSV picker — drag in SV square + hue strip
+    var sv = stylePanel.querySelector('.sp-sv');
+    var svThumb = stylePanel.querySelector('.sp-sv-thumb');
+    var hue = stylePanel.querySelector('.sp-hue');
+    var hueThumb = stylePanel.querySelector('.sp-hue-thumb');
+    var hsvH = 0, hsvS = 1, hsvV = 1;   // current HSV state
 
+    function updateSvBackground() {
+      sv.style.background =
+        'linear-gradient(to top,#000,transparent),'
+        + 'linear-gradient(to right,#fff,transparent),'
+        + 'hsl(' + hsvH + ',100%,50%)';
+    }
+    function applyPickerColor() {
+      var hex = hsvToHex(hsvH, hsvS, hsvV);
+      apply('color', hex);
+      markActiveSwatch(hex);
+      refreshCurrentIndicator(hex);
+      pushRecent(hex);
+    }
+    function setPickerFromHex(hex) {
+      var hsv = hexToHsv(hex);
+      hsvH = hsv.h; hsvS = hsv.s; hsvV = hsv.v;
+      updateSvBackground();
+      // Position thumbs
+      var svRect = sv.getBoundingClientRect();
+      svThumb.style.left = (hsv.s * 100) + '%';
+      svThumb.style.top = ((1 - hsv.v) * 100) + '%';
+      hueThumb.style.left = ((hsv.h / 360) * 100) + '%';
+    }
+
+    function dragHandler(target, onMove) {
+      function down(e) {
+        e.preventDefault();
+        onMove(e);
+        function move(ev) { onMove(ev); }
+        function up() {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+          document.removeEventListener('touchmove', move);
+          document.removeEventListener('touchend', up);
+        }
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+        document.addEventListener('touchmove', move, { passive: false });
+        document.addEventListener('touchend', up);
+      }
+      target.addEventListener('mousedown', down);
+      target.addEventListener('touchstart', down, { passive: false });
+    }
+    dragHandler(sv, function(e) {
+      var r = sv.getBoundingClientRect();
+      var pt = (e.touches && e.touches[0]) || e;
+      var x = Math.max(0, Math.min(1, (pt.clientX - r.left) / r.width));
+      var y = Math.max(0, Math.min(1, (pt.clientY - r.top) / r.height));
+      hsvS = x; hsvV = 1 - y;
+      svThumb.style.left = (x * 100) + '%';
+      svThumb.style.top  = (y * 100) + '%';
+      applyPickerColor();
+    });
+    dragHandler(hue, function(e) {
+      var r = hue.getBoundingClientRect();
+      var pt = (e.touches && e.touches[0]) || e;
+      var x = Math.max(0, Math.min(1, (pt.clientX - r.left) / r.width));
+      hsvH = x * 360;
+      hueThumb.style.left = (x * 100) + '%';
+      updateSvBackground();
+      applyPickerColor();
+    });
+
+    // Font size slider
     var fs = stylePanel.querySelector('.sp-fs');
     fs.oninput = function() {
       apply('fontSize', fs.value + 'px');
       stylePanel.querySelector('.sp-fs-v').textContent = fs.value;
     };
+    // Alignment
     stylePanel.querySelectorAll('.alignrow button').forEach(function(btn) {
       btn.onclick = function() {
         apply('textAlign', btn.dataset.align);
         stylePanel.querySelectorAll('.alignrow button').forEach(function(b){ b.classList.toggle('on', b === btn); });
       };
     });
-    var pd = stylePanel.querySelector('.sp-pd');
-    pd.oninput = function() {
-      apply('padding', pd.value + 'px');
-      stylePanel.querySelector('.sp-pd-v').textContent = pd.value;
-    };
+
+    // Expose setPickerFromHex for populateStylePanel
+    stylePanel.__hceSetPickerFromHex = setPickerFromHex;
     return stylePanel;
+  }
+
+  // ─── Recent colors (custom picks, in-memory) ───
+  var recentColors = [];
+  var RECENT_LIMIT = 8;
+  function pushRecent(hex) {
+    hex = hex.toLowerCase();
+    // skip if already in curated palette
+    if (PALETTE.map(function(c){return c.toLowerCase();}).indexOf(hex) !== -1) return;
+    recentColors = [hex].concat(recentColors.filter(function(c){ return c !== hex; })).slice(0, RECENT_LIMIT);
+    renderRecent();
+  }
+  function renderRecent() {
+    if (!stylePanel) return;
+    var wrap = stylePanel.querySelector('.sp-recent-wrap');
+    var row = stylePanel.querySelector('.sp-recent');
+    if (!recentColors.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'block';
+    row.innerHTML = '';
+    recentColors.forEach(function(c) {
+      var b = document.createElement('button');
+      b.className = 'sw';
+      b.setAttribute('data-color', c);
+      b.style.background = c;
+      b.title = c;
+      b.addEventListener('click', function() {
+        apply('color', c);
+        markActiveSwatch(c);
+        refreshCurrentIndicator(c);
+        if (stylePanel.__hceSetPickerFromHex) stylePanel.__hceSetPickerFromHex(c);
+      });
+      row.appendChild(b);
+    });
+  }
+
+  // ─── HSV ↔ HEX conversion ───
+  function hsvToHex(h, s, v) {
+    h = (h % 360 + 360) % 360;
+    var c = v * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = v - c;
+    var r, g, b;
+    if (h < 60)      { r = c; g = x; b = 0; }
+    else if (h < 120){ r = x; g = c; b = 0; }
+    else if (h < 180){ r = 0; g = c; b = x; }
+    else if (h < 240){ r = 0; g = x; b = c; }
+    else if (h < 300){ r = x; g = 0; b = c; }
+    else             { r = c; g = 0; b = x; }
+    function p(n) { return Math.round((n + m) * 255).toString(16).padStart(2, '0'); }
+    return '#' + p(r) + p(g) + p(b);
+  }
+  function hexToHsv(hex) {
+    hex = hex.replace('#','');
+    if (hex.length === 3) hex = hex.split('').map(function(c){return c+c;}).join('');
+    var r = parseInt(hex.slice(0,2),16)/255;
+    var g = parseInt(hex.slice(2,4),16)/255;
+    var b = parseInt(hex.slice(4,6),16)/255;
+    var max = Math.max(r,g,b), min = Math.min(r,g,b);
+    var d = max - min;
+    var h = 0;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    var s = max === 0 ? 0 : d / max;
+    var v = max;
+    return { h: h, s: s, v: v };
   }
 
   function markActiveSwatch(color) {
@@ -1048,10 +1224,14 @@ export function buildIframeScript() {
     var resetBtn = p.querySelector('.sp-reset');
     resetBtn.disabled = (hexC.toLowerCase() === el.__hceOriginalColor.toLowerCase());
 
-    // Sync the custom inputs + active swatch.
-    p.querySelector('.sp-color').value = hexC;
-    p.querySelector('.sp-color-txt').value = hexC;
+    // Sync the active swatch + (if picker is open) the picker thumbs.
     markActiveSwatch(hexC);
+    if (p.__hceSetPickerFromHex && p.querySelector('.sp-picker').classList.contains('show')) {
+      p.__hceSetPickerFromHex(hexC);
+    }
+
+    // Re-render the recent row (may have been populated since last open).
+    renderRecent();
 
     // Other controls
     var fs = pxNum(cs.fontSize);
@@ -1060,9 +1240,6 @@ export function buildIframeScript() {
     p.querySelectorAll('.alignrow button').forEach(function(b){
       b.classList.toggle('on', b.dataset.align === cs.textAlign);
     });
-    var pd = pxNum(cs.padding);
-    p.querySelector('.sp-pd').value = pd;
-    p.querySelector('.sp-pd-v').textContent = pd;
   }
   function positionStylePanel(el) {
     var p = ensureStylePanel();
