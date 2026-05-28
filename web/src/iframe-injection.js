@@ -787,99 +787,95 @@ export function buildIframeScript() {
     var m = String(s).match(/(-?\\d+(\\.\\d+)?)/);
     return m ? parseFloat(m[1]) : 0;
   }
-  // Curated palette — useful spread of neutrals + brand-ish accents.
-  // Click to apply. "Original" / Custom live separately.
-  var PALETTE = [
-    '#1a1a1a',   // ink
-    '#737373',   // mid grey
-    '#ffffff',   // white (useful for dark backgrounds)
-    '#ff5a1f',   // signal orange (our brand)
-    '#FFD500',   // lemon yellow
-    '#0a7d3f',   // forest green
-    '#2563eb',   // azure
-    '#b91c1c',   // red
-  ];
-
   function ensureStylePanel() {
     if (stylePanel) return stylePanel;
     var styleEl = document.createElement('style');
     styleEl.id = '__hce-style-panel-css';
     styleEl.textContent = [
-      // Wrapper — white pill panel matching toolbar aesthetic
-      '#__hce-style-panel{position:fixed;z-index:2147483647;width:288px;background:#ffffff;color:#1a1a1a;',
+      // Wrapper — compact white panel
+      '#__hce-style-panel{position:fixed;z-index:2147483647;width:248px;background:#ffffff;color:#1a1a1a;',
       'border:1px solid #e7e5e4;border-radius:12px;padding:0;',
       'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
       'box-shadow:0 12px 32px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06);display:none;}',
-      // Header (also the drag handle — cursor + user-select reflect that)
+      // Header / drag handle
       '#__hce-style-panel .sp-head{display:flex;justify-content:space-between;align-items:center;',
-      'padding:12px 14px;border-bottom:1px solid #f0efed;cursor:move;user-select:none;}',
+      'padding:10px 12px;border-bottom:1px solid #f0efed;cursor:move;user-select:none;}',
       '#__hce-style-panel.dragging{box-shadow:0 16px 40px rgba(15,23,42,.18),0 4px 10px rgba(15,23,42,.08);}',
-      '#__hce-style-panel .sp-head .ttl{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px;}',
-      '#__hce-style-panel .sp-head .ttl::before{content:"⋮⋮";color:#a8a29e;letter-spacing:-2px;font-size:14px;}',
+      '#__hce-style-panel .sp-head .ttl{font-size:12px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px;}',
+      '#__hce-style-panel .sp-head .ttl::before{content:"⋮⋮";color:#a8a29e;letter-spacing:-2px;font-size:13px;}',
       '#__hce-style-panel .sp-head .close{background:none;border:none;color:#a8a29e;cursor:pointer;',
-      'font-size:18px;line-height:1;padding:2px 6px;border-radius:4px;}',
+      'font-size:16px;line-height:1;padding:2px 6px;border-radius:4px;}',
       '#__hce-style-panel .sp-head .close:hover{background:#f5f5f4;color:#1a1a1a;}',
       // Body
-      '#__hce-style-panel .sp-body{padding:12px 14px 14px;}',
-      '#__hce-style-panel .row{margin-bottom:14px;}',
+      '#__hce-style-panel .sp-body{padding:10px 12px 12px;}',
+      '#__hce-style-panel .row{margin-bottom:10px;}',
       '#__hce-style-panel .row:last-child{margin-bottom:0;}',
-      '#__hce-style-panel label,#__hce-style-panel .label{display:block;color:#737373;margin-bottom:8px;',
-      'font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:500;}',
-      // Current/reset bar
-      '#__hce-style-panel .current-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}',
-      '#__hce-style-panel .current-sw{width:28px;height:28px;border-radius:6px;border:1px solid #d6d3d1;',
-      'flex-shrink:0;background:#000;}',
-      '#__hce-style-panel .current-meta{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}',
-      '#__hce-style-panel .current-meta .k{font-size:11px;color:#a8a29e;text-transform:uppercase;letter-spacing:.04em;}',
-      '#__hce-style-panel .current-meta .v{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#44403c;',
-      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-      '#__hce-style-panel .reset-btn{background:transparent;border:1px solid #d6d3d1;color:#44403c;',
-      'border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;',
-      'display:flex;align-items:center;gap:4px;}',
-      '#__hce-style-panel .reset-btn:hover{background:#f5f5f4;border-color:#44403c;color:#1a1a1a;}',
-      '#__hce-style-panel .reset-btn:disabled{opacity:.4;cursor:default;}',
-      // Palette
-      '#__hce-style-panel .palette{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;}',
+      '#__hce-style-panel label,#__hce-style-panel .label{display:block;color:#737373;margin-bottom:6px;',
+      'font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;}',
+      // Row head (label + value/action on right)
+      '#__hce-style-panel .row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}',
+      '#__hce-style-panel .row-head .label{margin-bottom:0;}',
+      '#__hce-style-panel .row-head .val{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:#44403c;}',
+      // Format buttons (B / I / U)
+      '#__hce-style-panel .biu-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}',
+      '#__hce-style-panel .biu-btn{background:#fafaf9;border:1px solid #e7e5e4;color:#44403c;',
+      'padding:0;border-radius:6px;cursor:pointer;font-size:14px;height:30px;display:flex;',
+      'align-items:center;justify-content:center;font-family:Georgia,Cambria,Times,serif;}',
+      '#__hce-style-panel .biu-btn[data-prop="fontWeight"]{font-weight:700;}',
+      '#__hce-style-panel .biu-btn[data-prop="fontStyle"]{font-style:italic;}',
+      '#__hce-style-panel .biu-btn[data-prop="textDecoration"]{text-decoration:underline;}',
+      '#__hce-style-panel .biu-btn:hover{background:#f0efed;color:#1a1a1a;}',
+      '#__hce-style-panel .biu-btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}',
+      // Compact reset icon button (in color row head)
+      '#__hce-style-panel .reset-btn{background:transparent;border:none;color:#737373;cursor:pointer;',
+      'font-size:13px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;',
+      'line-height:1;}',
+      '#__hce-style-panel .reset-btn:hover{background:#f5f5f4;color:#1a1a1a;}',
+      '#__hce-style-panel .reset-btn:disabled{opacity:.35;cursor:default;}',
+      // Palette + recent
+      '#__hce-style-panel .palette,#__hce-style-panel .recent{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}',
       '#__hce-style-panel .sw{width:100%;aspect-ratio:1;border-radius:6px;border:1px solid #e7e5e4;',
       'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;}',
       '#__hce-style-panel .sw:hover{transform:scale(1.08);box-shadow:0 2px 6px rgba(0,0,0,.12);}',
       '#__hce-style-panel .sw.on{outline:2px solid #1a1a1a;outline-offset:2px;}',
-      // Recent (custom picks saved) — same look as palette but smaller row
-      '#__hce-style-panel .recent-label{margin-top:10px;}',
-      '#__hce-style-panel .recent{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;}',
+      // Recent swatch × delete on hover
+      '#__hce-style-panel .recent .sw .x{position:absolute;top:-5px;right:-5px;width:14px;height:14px;',
+      'background:#1a1a1a;color:#fff;border-radius:50%;border:none;cursor:pointer;font-size:9px;',
+      'line-height:14px;text-align:center;padding:0;display:none;}',
+      '#__hce-style-panel .recent .sw:hover .x{display:block;}',
+      '#__hce-style-panel .recent-label{margin-top:8px;}',
       // Custom expander
-      '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:12px;',
-      'cursor:pointer;padding:8px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;}',
+      '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:11px;',
+      'cursor:pointer;padding:6px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;',
+      'font-weight:500;}',
       '#__hce-style-panel .more-toggle:hover{color:#1a1a1a;}',
       '#__hce-style-panel .more-toggle .chev{transition:transform 160ms;}',
       '#__hce-style-panel .more-toggle.open .chev{transform:rotate(90deg);}',
       // HSV picker — drag-only
-      '#__hce-style-panel .picker{display:none;flex-direction:column;gap:10px;padding-top:10px;}',
+      '#__hce-style-panel .picker{display:none;flex-direction:column;gap:8px;padding-top:8px;}',
       '#__hce-style-panel .picker.show{display:flex;}',
-      '#__hce-style-panel .sv{position:relative;width:100%;height:140px;border-radius:8px;cursor:crosshair;',
+      '#__hce-style-panel .sv{position:relative;width:100%;height:120px;border-radius:8px;cursor:crosshair;',
       'background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),#f00;',
       'overflow:hidden;border:1px solid #e7e5e4;}',
       '#__hce-style-panel .sv-thumb{position:absolute;width:14px;height:14px;border-radius:50%;',
       'border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);',
       'transform:translate(-50%,-50%);pointer-events:none;}',
-      '#__hce-style-panel .hue{position:relative;width:100%;height:14px;border-radius:7px;cursor:pointer;',
+      '#__hce-style-panel .hue{position:relative;width:100%;height:12px;border-radius:6px;cursor:pointer;',
       'background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border:1px solid #e7e5e4;}',
       '#__hce-style-panel .hue-thumb{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;',
       'background:#fff;border:2px solid #1a1a1a;transform:translate(-50%,-50%);pointer-events:none;}',
-      // Range sliders + alignment buttons
-      '#__hce-style-panel .row-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}',
-      '#__hce-style-panel .row-head .label{margin-bottom:0;}',
-      '#__hce-style-panel .row-head .val{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#44403c;}',
+      // Range slider
       '#__hce-style-panel input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;',
       'background:#e7e5e4;border-radius:2px;outline:none;}',
       '#__hce-style-panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;',
-      'width:16px;height:16px;border-radius:50%;background:#1a1a1a;cursor:pointer;border:2px solid #fff;',
+      'width:14px;height:14px;border-radius:50%;background:#1a1a1a;cursor:pointer;border:2px solid #fff;',
       'box-shadow:0 1px 3px rgba(0,0,0,.2);}',
-      '#__hce-style-panel input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;',
+      '#__hce-style-panel input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;',
       'background:#1a1a1a;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);}',
+      // Alignment buttons
       '#__hce-style-panel .alignrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}',
       '#__hce-style-panel .alignrow button{background:#fafaf9;border:1px solid #e7e5e4;color:#44403c;',
-      'padding:7px 0;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500;text-transform:capitalize;}',
+      'padding:6px 0;border-radius:6px;cursor:pointer;font-size:10px;font-weight:500;text-transform:capitalize;}',
       '#__hce-style-panel .alignrow button:hover{background:#f0efed;color:#1a1a1a;}',
       '#__hce-style-panel .alignrow button.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}',
     ].join('');
@@ -887,47 +883,50 @@ export function buildIframeScript() {
     stylePanel = document.createElement('div');
     stylePanel.id = '__hce-style-panel';
 
-    // Build palette swatches HTML
-    var paletteHTML = '';
-    for (var i = 0; i < PALETTE.length; i++) {
-      paletteHTML += '<button class="sw" data-color="' + PALETTE[i] + '" style="background:' + PALETTE[i] + '" title="' + PALETTE[i] + '"></button>';
-    }
-
     stylePanel.innerHTML =
         '<div class="sp-head"><span class="ttl">Style</span><button class="close" title="Close">×</button></div>'
       + '<div class="sp-body">'
 
-      + '<div class="row sp-color-row">'
-        + '<span class="label">Text color</span>'
-        + '<div class="current-bar">'
-          + '<span class="current-sw sp-current-sw"></span>'
-          + '<div class="current-meta"><span class="k">Current</span><span class="v sp-current-val">—</span></div>'
-          + '<button class="reset-btn sp-reset" title="Revert to original color">↶ Reset</button>'
-        + '</div>'
-        + '<div class="palette sp-palette">' + paletteHTML + '</div>'
-        + '<div class="sp-recent-wrap" style="display:none;">'
-          + '<span class="label recent-label">Recent</span>'
-          + '<div class="recent sp-recent"></div>'
-        + '</div>'
-        + '<button class="more-toggle sp-more-toggle" type="button"><span class="chev">▸</span> Custom</button>'
-        + '<div class="picker sp-picker">'
-          + '<div class="sv sp-sv"><div class="sv-thumb sp-sv-thumb"></div></div>'
-          + '<div class="hue sp-hue"><div class="hue-thumb sp-hue-thumb"></div></div>'
+      // Format: B / I / U
+      + '<div class="row">'
+        + '<div class="biu-row">'
+          + '<button class="biu-btn" data-prop="fontWeight" title="Bold">B</button>'
+          + '<button class="biu-btn" data-prop="fontStyle"  title="Italic">I</button>'
+          + '<button class="biu-btn" data-prop="textDecoration" title="Underline">U</button>'
         + '</div>'
       + '</div>'
 
+      // Alignment
       + '<div class="row">'
-        + '<div class="row-head"><span class="label">Font size</span><span class="val"><span class="sp-fs-v">14</span>px</span></div>'
-        + '<input type="range" class="sp-fs" min="10" max="120">'
-      + '</div>'
-
-      + '<div class="row">'
-        + '<span class="label">Alignment</span>'
         + '<div class="alignrow">'
           + '<button data-align="left">Left</button>'
           + '<button data-align="center">Center</button>'
           + '<button data-align="right">Right</button>'
           + '<button data-align="justify">Justify</button>'
+        + '</div>'
+      + '</div>'
+
+      // Size
+      + '<div class="row">'
+        + '<div class="row-head"><span class="label">Size</span><span class="val"><span class="sp-fs-v">14</span>px</span></div>'
+        + '<input type="range" class="sp-fs" min="10" max="120">'
+      + '</div>'
+
+      // Color
+      + '<div class="row sp-color-row">'
+        + '<div class="row-head">'
+          + '<span class="label">Color</span>'
+          + '<button class="reset-btn sp-reset" title="Revert to original color">↶ Reset</button>'
+        + '</div>'
+        + '<div class="palette sp-palette"><!-- filled by renderPalette() --></div>'
+        + '<div class="sp-recent-wrap" style="display:none;">'
+          + '<span class="label recent-label">Recent</span>'
+          + '<div class="recent sp-recent"></div>'
+        + '</div>'
+        + '<button class="more-toggle sp-more-toggle" type="button"><span class="chev">▸</span> More colors</button>'
+        + '<div class="picker sp-picker">'
+          + '<div class="sv sp-sv"><div class="sv-thumb sp-sv-thumb"></div></div>'
+          + '<div class="hue sp-hue"><div class="hue-thumb sp-hue-thumb"></div></div>'
         + '</div>'
       + '</div>'
 
@@ -985,28 +984,17 @@ export function buildIframeScript() {
       }
       debouncedCommitStyle();
     }
+    // Expose for module-level helpers (renderPalette / renderRecent etc.)
+    stylePanel.__hceApply = apply;
     stylePanel.querySelector('.close').onclick = hideStylePanel;
 
-    // Helper: refresh the "Current" swatch + reset button after a color change
-    function refreshCurrentIndicator(color) {
+    // Refresh reset button enabled state after a color change
+    function refreshResetState(color) {
       if (!styleTarget) return;
       var hex = rgbToHex(color);
-      stylePanel.querySelector('.sp-current-sw').style.background = hex;
-      stylePanel.querySelector('.sp-current-val').textContent = hex;
       var orig = styleTarget.__hceOriginalColor || hex;
       stylePanel.querySelector('.sp-reset').disabled = (hex.toLowerCase() === orig.toLowerCase());
     }
-
-    // Color: palette swatches (primary path)
-    stylePanel.querySelectorAll('.sp-palette .sw').forEach(function(sw) {
-      sw.addEventListener('click', function() {
-        var c = sw.getAttribute('data-color');
-        apply('color', c);
-        markActiveSwatch(c);
-        syncCustomColorInputs(c);
-        refreshCurrentIndicator(c);
-      });
-    });
 
     // Reset button — revert to original color captured when panel opened
     stylePanel.querySelector('.sp-reset').addEventListener('click', function() {
@@ -1014,8 +1002,27 @@ export function buildIframeScript() {
       var c = styleTarget.__hceOriginalColor;
       apply('color', c);
       markActiveSwatch(c);
-      syncCustomColorInputs(c);
-      refreshCurrentIndicator(c);
+      refreshResetState(c);
+    });
+
+    // ─── Bold / Italic / Underline toggles ───
+    function isFormatActive(prop, target) {
+      var cs = getComputedStyle(target);
+      if (prop === 'fontWeight') return parseInt(cs.fontWeight, 10) >= 600;
+      if (prop === 'fontStyle')  return cs.fontStyle === 'italic' || cs.fontStyle === 'oblique';
+      if (prop === 'textDecoration') return (cs.textDecorationLine || cs.textDecoration || '').indexOf('underline') !== -1;
+      return false;
+    }
+    stylePanel.querySelectorAll('.biu-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!styleTarget) return;
+        var prop = btn.getAttribute('data-prop');
+        var active = isFormatActive(prop, styleTarget);
+        if (prop === 'fontWeight')   apply('fontWeight', active ? '400' : '700');
+        else if (prop === 'fontStyle')   apply('fontStyle',  active ? 'normal' : 'italic');
+        else if (prop === 'textDecoration') apply('textDecoration', active ? 'none' : 'underline');
+        btn.classList.toggle('on', !active);
+      });
     });
 
     // Custom expander → reveals HSV picker
@@ -1048,7 +1055,7 @@ export function buildIframeScript() {
       var hex = hsvToHex(hsvH, hsvS, hsvV);
       apply('color', hex);
       markActiveSwatch(hex);
-      refreshCurrentIndicator(hex);
+      refreshResetState(hex);
       pushRecent(hex);
     }
     function setPickerFromHex(hex) {
@@ -1115,25 +1122,34 @@ export function buildIframeScript() {
       };
     });
 
-    // Expose setPickerFromHex for populateStylePanel
+    // Expose for module-level helpers (renderPalette / renderRecent)
     stylePanel.__hceSetPickerFromHex = setPickerFromHex;
+    stylePanel.__hceRefreshResetState = refreshResetState;
     return stylePanel;
   }
 
+  // ─── Current page-derived palette (regenerated each panel open) ───
+  var currentPalette = [];
+
   // ─── Recent colors (custom picks, in-memory) ───
   var recentColors = [];
-  var RECENT_LIMIT = 8;
+  var RECENT_LIMIT = 5;
   function pushRecent(hex) {
     hex = hex.toLowerCase();
-    // skip if already in curated palette
-    if (PALETTE.map(function(c){return c.toLowerCase();}).indexOf(hex) !== -1) return;
+    // skip if already in palette (would be redundant)
+    if (currentPalette.map(function(c){return c.toLowerCase();}).indexOf(hex) !== -1) return;
     recentColors = [hex].concat(recentColors.filter(function(c){ return c !== hex; })).slice(0, RECENT_LIMIT);
+    renderRecent();
+  }
+  function removeRecent(hex) {
+    hex = hex.toLowerCase();
+    recentColors = recentColors.filter(function(c) { return c.toLowerCase() !== hex; });
     renderRecent();
   }
   function renderRecent() {
     if (!stylePanel) return;
     var wrap = stylePanel.querySelector('.sp-recent-wrap');
-    var row = stylePanel.querySelector('.sp-recent');
+    var row  = stylePanel.querySelector('.sp-recent');
     if (!recentColors.length) {
       wrap.style.display = 'none';
       return;
@@ -1146,10 +1162,97 @@ export function buildIframeScript() {
       b.setAttribute('data-color', c);
       b.style.background = c;
       b.title = c;
-      b.addEventListener('click', function() {
-        apply('color', c);
+      b.addEventListener('click', function(ev) {
+        if (ev.target && ev.target.classList && ev.target.classList.contains('x')) return; // click on × handled separately
+        if (stylePanel.__hceApply) stylePanel.__hceApply('color', c);
         markActiveSwatch(c);
-        refreshCurrentIndicator(c);
+        if (stylePanel.__hceRefreshResetState) stylePanel.__hceRefreshResetState(c);
+        if (stylePanel.__hceSetPickerFromHex) stylePanel.__hceSetPickerFromHex(c);
+      });
+      // × delete button
+      var x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '×';
+      x.title = 'Remove from recent';
+      x.addEventListener('click', function(ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        removeRecent(c);
+      });
+      b.appendChild(x);
+      row.appendChild(b);
+    });
+  }
+
+  // ─── Extract page-derived palette ───
+  // Walk the iframe body, collect distinctive colors used. If fewer than 5
+  // distinct ones found, fill the rest with hue-rotated complements.
+  function extractPageColors() {
+    var counts = Object.create(null);
+    var firstSeen = Object.create(null);
+    var seq = 0;
+
+    function consider(c) {
+      if (!c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)') return;
+      var hex = rgbToHex(c).toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(hex)) return;
+      var r = parseInt(hex.slice(1,3), 16);
+      var g = parseInt(hex.slice(3,5), 16);
+      var b = parseInt(hex.slice(5,7), 16);
+      var max = Math.max(r,g,b), min = Math.min(r,g,b);
+      if (max - min < 32) return;     // near-grey, skip
+      if (max < 40) return;           // near-black, skip
+      if (min > 230 && max - min < 50) return;   // near-white pastel, skip
+      counts[hex] = (counts[hex] || 0) + 1;
+      if (firstSeen[hex] === undefined) firstSeen[hex] = seq++;
+    }
+
+    document.querySelectorAll('body *').forEach(function(el) {
+      // Skip our injected UI to avoid polluting the palette.
+      if (el.closest && (el.closest('#__hce-style-panel') || el.closest('#__hce-tools') || el.closest('#__hce-handle'))) return;
+      var cs;
+      try { cs = getComputedStyle(el); } catch { return; }
+      consider(cs.color);
+      consider(cs.backgroundColor);
+      consider(cs.borderColor);
+    });
+
+    var picked = Object.keys(counts).sort(function(a, b) {
+      if (counts[a] !== counts[b]) return counts[b] - counts[a];
+      return firstSeen[a] - firstSeen[b];
+    }).slice(0, 5);
+
+    // If empty, seed with a sensible default
+    if (picked.length === 0) picked = ['#ff5a1f'];
+
+    // Fill up to 5 with hue-rotated complementary colors of the first pick
+    var i = 1;
+    while (picked.length < 5 && i < 30) {
+      var src = picked[i % picked.length] || picked[0];
+      var hsv = hexToHsv(src);
+      var step = i <= 3 ? 180 : (60 * i);
+      var nh = (hsv.h + step) % 360;
+      var nc = hsvToHex(nh, Math.max(0.5, hsv.s || 0.7), Math.max(0.5, hsv.v || 0.7)).toLowerCase();
+      if (picked.indexOf(nc) === -1) picked.push(nc);
+      i++;
+    }
+    currentPalette = picked.slice(0, 5);
+    return currentPalette;
+  }
+
+  function renderPalette() {
+    if (!stylePanel) return;
+    var row = stylePanel.querySelector('.sp-palette');
+    row.innerHTML = '';
+    currentPalette.forEach(function(c) {
+      var b = document.createElement('button');
+      b.className = 'sw';
+      b.setAttribute('data-color', c);
+      b.style.background = c;
+      b.title = c;
+      b.addEventListener('click', function() {
+        if (stylePanel.__hceApply) stylePanel.__hceApply('color', c);
+        markActiveSwatch(c);
+        if (stylePanel.__hceRefreshResetState) stylePanel.__hceRefreshResetState(c);
         if (stylePanel.__hceSetPickerFromHex) stylePanel.__hceSetPickerFromHex(c);
       });
       row.appendChild(b);
@@ -1200,40 +1303,42 @@ export function buildIframeScript() {
       sw.classList.toggle('on', sw.getAttribute('data-color').toLowerCase() === hex);
     });
   }
-  function syncCustomColorInputs(color) {
-    if (!stylePanel) return;
-    var hex = rgbToHex(color);
-    stylePanel.querySelector('.sp-color').value = hex;
-    stylePanel.querySelector('.sp-color-txt').value = hex;
-  }
   function populateStylePanel(el) {
     var p = ensureStylePanel();
     var cs = getComputedStyle(el);
     var hexC = rgbToHex(cs.color);
 
-    // Capture the original color ONCE per element (first time panel opens on it
-    // in this session). Reset button rolls back to this value at any time.
+    // Capture the original color ONCE per element. Reset reverts to it.
     if (!el.__hceOriginalColor) {
       el.__hceOriginalColor = hexC;
     }
-    // "Current" swatch always shows the LIVE current color of the element.
-    p.querySelector('.sp-current-sw').style.background = hexC;
-    p.querySelector('.sp-current-val').textContent = hexC;
 
-    // Enable/disable Reset button — only useful if current ≠ original.
+    // Build the page-derived palette + render it.
+    extractPageColors();
+    renderPalette();
+    renderRecent();
+
+    // Reset button state (enabled if current color !== original)
     var resetBtn = p.querySelector('.sp-reset');
     resetBtn.disabled = (hexC.toLowerCase() === el.__hceOriginalColor.toLowerCase());
 
-    // Sync the active swatch + (if picker is open) the picker thumbs.
+    // Active swatch in the palette, and HSV picker thumbs if open
     markActiveSwatch(hexC);
     if (p.__hceSetPickerFromHex && p.querySelector('.sp-picker').classList.contains('show')) {
       p.__hceSetPickerFromHex(hexC);
     }
 
-    // Re-render the recent row (may have been populated since last open).
-    renderRecent();
+    // B / I / U toggle state
+    p.querySelectorAll('.biu-btn').forEach(function(btn) {
+      var prop = btn.getAttribute('data-prop');
+      var active = false;
+      if (prop === 'fontWeight')   active = parseInt(cs.fontWeight, 10) >= 600;
+      else if (prop === 'fontStyle')   active = (cs.fontStyle === 'italic' || cs.fontStyle === 'oblique');
+      else if (prop === 'textDecoration') active = ((cs.textDecorationLine || cs.textDecoration || '').indexOf('underline') !== -1);
+      btn.classList.toggle('on', active);
+    });
 
-    // Other controls
+    // Size + alignment
     var fs = pxNum(cs.fontSize);
     p.querySelector('.sp-fs').value = fs;
     p.querySelector('.sp-fs-v').textContent = fs;
