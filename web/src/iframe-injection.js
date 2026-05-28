@@ -787,42 +787,139 @@ export function buildIframeScript() {
     var m = String(s).match(/(-?\\d+(\\.\\d+)?)/);
     return m ? parseFloat(m[1]) : 0;
   }
+  // Curated palette — useful spread of neutrals + brand-ish accents.
+  // Click to apply. "Original" / Custom live separately.
+  var PALETTE = [
+    '#1a1a1a',   // ink
+    '#737373',   // mid grey
+    '#ffffff',   // white (useful for dark backgrounds)
+    '#ff5a1f',   // signal orange (our brand)
+    '#FFD500',   // lemon yellow
+    '#0a7d3f',   // forest green
+    '#2563eb',   // azure
+    '#b91c1c',   // red
+  ];
+
   function ensureStylePanel() {
     if (stylePanel) return stylePanel;
     var styleEl = document.createElement('style');
     styleEl.id = '__hce-style-panel-css';
-    styleEl.textContent = ''
-      + '#__hce-style-panel{position:fixed;z-index:2147483647;width:280px;'
-      + 'background:#1f1d2e;color:#e8e6f0;border:1px solid rgba(255,255,255,.08);'
-      + 'border-radius:12px;padding:14px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;'
-      + 'box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;}'
-      + '#__hce-style-panel label{display:block;color:#9b97b0;margin-bottom:4px;font-size:11px;}'
-      + '#__hce-style-panel .row{margin-bottom:10px;}'
-      + '#__hce-style-panel input[type=text]{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,monospace;box-sizing:border-box;}'
-      + '#__hce-style-panel input[type=color]{width:32px;height:32px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;cursor:pointer;padding:0;}'
-      + '#__hce-style-panel .colorrow{display:flex;gap:8px;align-items:center;}'
-      + '#__hce-style-panel input[type=range]{width:100%;}'
-      + '#__hce-style-panel select{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;}'
-      + '#__hce-style-panel .alignrow{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;}'
-      + '#__hce-style-panel .alignrow button{background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#cfcadf;padding:6px 0;border-radius:6px;cursor:pointer;font-size:11px;}'
-      + '#__hce-style-panel .alignrow button.on{background:#5a4fcf;color:#fff;}'
-      + '#__hce-style-panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}'
-      + '#__hce-style-panel .head .ttl{font-size:13px;font-weight:600;}'
-      + '#__hce-style-panel .head button{background:none;border:none;color:#9b97b0;cursor:pointer;font-size:18px;line-height:1;}';
+    styleEl.textContent = [
+      // Wrapper — white pill panel matching toolbar aesthetic
+      '#__hce-style-panel{position:fixed;z-index:2147483647;width:288px;background:#ffffff;color:#1a1a1a;',
+      'border:1px solid #e7e5e4;border-radius:12px;padding:0;',
+      'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
+      'box-shadow:0 12px 32px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06);display:none;}',
+      // Header
+      '#__hce-style-panel .sp-head{display:flex;justify-content:space-between;align-items:center;',
+      'padding:12px 14px;border-bottom:1px solid #f0efed;}',
+      '#__hce-style-panel .sp-head .ttl{font-size:13px;font-weight:600;color:#1a1a1a;}',
+      '#__hce-style-panel .sp-head .close{background:none;border:none;color:#a8a29e;cursor:pointer;',
+      'font-size:18px;line-height:1;padding:2px 6px;border-radius:4px;}',
+      '#__hce-style-panel .sp-head .close:hover{background:#f5f5f4;color:#1a1a1a;}',
+      // Body
+      '#__hce-style-panel .sp-body{padding:12px 14px 14px;}',
+      '#__hce-style-panel .row{margin-bottom:14px;}',
+      '#__hce-style-panel .row:last-child{margin-bottom:0;}',
+      '#__hce-style-panel label,#__hce-style-panel .label{display:block;color:#737373;margin-bottom:8px;',
+      'font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:500;}',
+      // Current/reset bar
+      '#__hce-style-panel .current-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}',
+      '#__hce-style-panel .current-sw{width:28px;height:28px;border-radius:6px;border:1px solid #d6d3d1;',
+      'flex-shrink:0;background:#000;}',
+      '#__hce-style-panel .current-meta{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}',
+      '#__hce-style-panel .current-meta .k{font-size:11px;color:#a8a29e;text-transform:uppercase;letter-spacing:.04em;}',
+      '#__hce-style-panel .current-meta .v{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#44403c;',
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '#__hce-style-panel .reset-btn{background:transparent;border:1px solid #d6d3d1;color:#44403c;',
+      'border-radius:6px;padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;',
+      'display:flex;align-items:center;gap:4px;}',
+      '#__hce-style-panel .reset-btn:hover{background:#f5f5f4;border-color:#44403c;color:#1a1a1a;}',
+      '#__hce-style-panel .reset-btn:disabled{opacity:.4;cursor:default;}',
+      // Palette
+      '#__hce-style-panel .palette{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;}',
+      '#__hce-style-panel .sw{width:100%;aspect-ratio:1;border-radius:6px;border:1px solid #e7e5e4;',
+      'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;}',
+      '#__hce-style-panel .sw:hover{transform:scale(1.08);box-shadow:0 2px 6px rgba(0,0,0,.12);}',
+      '#__hce-style-panel .sw.on{outline:2px solid #1a1a1a;outline-offset:2px;}',
+      // Custom expander
+      '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:12px;',
+      'cursor:pointer;padding:6px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;}',
+      '#__hce-style-panel .more-toggle:hover{color:#1a1a1a;}',
+      '#__hce-style-panel .more-toggle .chev{transition:transform 160ms;}',
+      '#__hce-style-panel .more-toggle.open .chev{transform:rotate(90deg);}',
+      '#__hce-style-panel .custom-row{display:none;align-items:center;gap:8px;padding-top:10px;}',
+      '#__hce-style-panel .custom-row.show{display:flex;}',
+      '#__hce-style-panel input[type=color]{width:32px;height:32px;border:1px solid #d6d3d1;border-radius:6px;',
+      'background:transparent;cursor:pointer;padding:0;flex-shrink:0;}',
+      '#__hce-style-panel input[type=text]{flex:1;min-width:0;background:#fafaf9;border:1px solid #d6d3d1;',
+      'color:#1a1a1a;padding:7px 10px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,monospace;',
+      'box-sizing:border-box;}',
+      '#__hce-style-panel input[type=text]:focus{outline:none;border-color:#1a1a1a;box-shadow:0 0 0 3px rgba(26,26,26,.06);}',
+      // Range sliders + alignment buttons
+      '#__hce-style-panel .row-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}',
+      '#__hce-style-panel .row-head .label{margin-bottom:0;}',
+      '#__hce-style-panel .row-head .val{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:#44403c;}',
+      '#__hce-style-panel input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;',
+      'background:#e7e5e4;border-radius:2px;outline:none;}',
+      '#__hce-style-panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;',
+      'width:16px;height:16px;border-radius:50%;background:#1a1a1a;cursor:pointer;border:2px solid #fff;',
+      'box-shadow:0 1px 3px rgba(0,0,0,.2);}',
+      '#__hce-style-panel input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;',
+      'background:#1a1a1a;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);}',
+      '#__hce-style-panel .alignrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}',
+      '#__hce-style-panel .alignrow button{background:#fafaf9;border:1px solid #e7e5e4;color:#44403c;',
+      'padding:7px 0;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500;text-transform:capitalize;}',
+      '#__hce-style-panel .alignrow button:hover{background:#f0efed;color:#1a1a1a;}',
+      '#__hce-style-panel .alignrow button.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}',
+    ].join('');
     document.head.appendChild(styleEl);
     stylePanel = document.createElement('div');
     stylePanel.id = '__hce-style-panel';
+
+    // Build palette swatches HTML
+    var paletteHTML = '';
+    for (var i = 0; i < PALETTE.length; i++) {
+      paletteHTML += '<button class="sw" data-color="' + PALETTE[i] + '" style="background:' + PALETTE[i] + '" title="' + PALETTE[i] + '"></button>';
+    }
+
     stylePanel.innerHTML =
-        '<div class="head"><span class="ttl">样式</span><button class="close" title="关闭">×</button></div>'
-      + '<div class="row"><label>文字颜色</label><div class="colorrow"><input type="color" class="sp-color"><input type="text" class="sp-color-txt"></div></div>'
-      + '<div class="row"><label class="sp-fs-l">字号 <span class="sp-fs-v">14</span>px</label><input type="range" class="sp-fs" min="10" max="120"></div>'
-      + '<div class="row"><label>对齐</label><div class="alignrow">'
-        + '<button data-align="left">left</button>'
-        + '<button data-align="center">center</button>'
-        + '<button data-align="right">right</button>'
-        + '<button data-align="justify">justify</button>'
-      + '</div></div>'
-      + '<div class="row"><label class="sp-pd-l">内边距 <span class="sp-pd-v">0</span>px</label><input type="range" class="sp-pd" min="0" max="80"></div>';
+        '<div class="sp-head"><span class="ttl">Style</span><button class="close" title="Close">×</button></div>'
+      + '<div class="sp-body">'
+
+      + '<div class="row sp-color-row">'
+        + '<span class="label">Text color</span>'
+        + '<div class="current-bar">'
+          + '<span class="current-sw sp-current-sw"></span>'
+          + '<div class="current-meta"><span class="k">Current</span><span class="v sp-current-val">—</span></div>'
+          + '<button class="reset-btn sp-reset" title="Revert to original color">↶ Reset</button>'
+        + '</div>'
+        + '<div class="palette sp-palette">' + paletteHTML + '</div>'
+        + '<button class="more-toggle sp-more-toggle" type="button"><span class="chev">▸</span> Custom</button>'
+        + '<div class="custom-row sp-custom"><input type="color" class="sp-color"><input type="text" class="sp-color-txt" placeholder="#000000"></div>'
+      + '</div>'
+
+      + '<div class="row">'
+        + '<div class="row-head"><span class="label">Font size</span><span class="val"><span class="sp-fs-v">14</span>px</span></div>'
+        + '<input type="range" class="sp-fs" min="10" max="120">'
+      + '</div>'
+
+      + '<div class="row">'
+        + '<span class="label">Alignment</span>'
+        + '<div class="alignrow">'
+          + '<button data-align="left">Left</button>'
+          + '<button data-align="center">Center</button>'
+          + '<button data-align="right">Right</button>'
+          + '<button data-align="justify">Justify</button>'
+        + '</div>'
+      + '</div>'
+
+      + '<div class="row">'
+        + '<div class="row-head"><span class="label">Padding</span><span class="val"><span class="sp-pd-v">0</span>px</span></div>'
+        + '<input type="range" class="sp-pd" min="0" max="80">'
+      + '</div>'
+
+      + '</div>';
     document.body.appendChild(stylePanel);
     // [FIX] 阻止面板内的事件冒泡到 document — 否则点滑块松手时 click 事件
     // 会冒泡到 iframe-injection 的全局 click handler，触发 hideTools 把面板关了
@@ -845,10 +942,62 @@ export function buildIframeScript() {
       debouncedCommitStyle();
     }
     stylePanel.querySelector('.close').onclick = hideStylePanel;
+
+    // Helper: refresh the "Current" swatch + reset button after a color change
+    function refreshCurrentIndicator(color) {
+      if (!styleTarget) return;
+      var hex = rgbToHex(color);
+      stylePanel.querySelector('.sp-current-sw').style.background = hex;
+      stylePanel.querySelector('.sp-current-val').textContent = hex;
+      var orig = styleTarget.__hceOriginalColor || hex;
+      stylePanel.querySelector('.sp-reset').disabled = (hex.toLowerCase() === orig.toLowerCase());
+    }
+
+    // Color: palette swatches (primary path)
+    stylePanel.querySelectorAll('.sp-palette .sw').forEach(function(sw) {
+      sw.addEventListener('click', function() {
+        var c = sw.getAttribute('data-color');
+        apply('color', c);
+        markActiveSwatch(c);
+        syncCustomColorInputs(c);
+        refreshCurrentIndicator(c);
+      });
+    });
+
+    // Reset button — revert to original color captured when panel opened
+    stylePanel.querySelector('.sp-reset').addEventListener('click', function() {
+      if (!styleTarget || !styleTarget.__hceOriginalColor) return;
+      var c = styleTarget.__hceOriginalColor;
+      apply('color', c);
+      markActiveSwatch(c);
+      syncCustomColorInputs(c);
+      refreshCurrentIndicator(c);
+    });
+
+    // Custom expander
+    var moreBtn = stylePanel.querySelector('.sp-more-toggle');
+    var customRow = stylePanel.querySelector('.sp-custom');
+    moreBtn.addEventListener('click', function() {
+      var open = moreBtn.classList.toggle('open');
+      customRow.classList.toggle('show', open);
+    });
+
+    // Custom color picker + text input (secondary path)
     var cIn = stylePanel.querySelector('.sp-color');
     var cTx = stylePanel.querySelector('.sp-color-txt');
-    cIn.oninput = function() { apply('color', cIn.value); cTx.value = cIn.value; };
-    cTx.onchange = function() { apply('color', cTx.value); cIn.value = rgbToHex(cTx.value); };
+    cIn.oninput = function() {
+      apply('color', cIn.value);
+      cTx.value = cIn.value;
+      markActiveSwatch(cIn.value);
+      refreshCurrentIndicator(cIn.value);
+    };
+    cTx.onchange = function() {
+      apply('color', cTx.value);
+      cIn.value = rgbToHex(cTx.value);
+      markActiveSwatch(cTx.value);
+      refreshCurrentIndicator(cTx.value);
+    };
+
     var fs = stylePanel.querySelector('.sp-fs');
     fs.oninput = function() {
       apply('fontSize', fs.value + 'px');
@@ -867,12 +1016,44 @@ export function buildIframeScript() {
     };
     return stylePanel;
   }
+
+  function markActiveSwatch(color) {
+    if (!stylePanel) return;
+    var hex = rgbToHex(color).toLowerCase();
+    stylePanel.querySelectorAll('.sp-palette .sw').forEach(function(sw) {
+      sw.classList.toggle('on', sw.getAttribute('data-color').toLowerCase() === hex);
+    });
+  }
+  function syncCustomColorInputs(color) {
+    if (!stylePanel) return;
+    var hex = rgbToHex(color);
+    stylePanel.querySelector('.sp-color').value = hex;
+    stylePanel.querySelector('.sp-color-txt').value = hex;
+  }
   function populateStylePanel(el) {
     var p = ensureStylePanel();
     var cs = getComputedStyle(el);
     var hexC = rgbToHex(cs.color);
+
+    // Capture the original color ONCE per element (first time panel opens on it
+    // in this session). Reset button rolls back to this value at any time.
+    if (!el.__hceOriginalColor) {
+      el.__hceOriginalColor = hexC;
+    }
+    // "Current" swatch always shows the LIVE current color of the element.
+    p.querySelector('.sp-current-sw').style.background = hexC;
+    p.querySelector('.sp-current-val').textContent = hexC;
+
+    // Enable/disable Reset button — only useful if current ≠ original.
+    var resetBtn = p.querySelector('.sp-reset');
+    resetBtn.disabled = (hexC.toLowerCase() === el.__hceOriginalColor.toLowerCase());
+
+    // Sync the custom inputs + active swatch.
     p.querySelector('.sp-color').value = hexC;
-    p.querySelector('.sp-color-txt').value = cs.color;
+    p.querySelector('.sp-color-txt').value = hexC;
+    markActiveSwatch(hexC);
+
+    // Other controls
     var fs = pxNum(cs.fontSize);
     p.querySelector('.sp-fs').value = fs;
     p.querySelector('.sp-fs-v').textContent = fs;
