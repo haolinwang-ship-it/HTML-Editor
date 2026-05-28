@@ -180,6 +180,8 @@ export function buildIframeScript() {
         id: id,
         text: el.textContent
       }, '*');
+      // Log this as a 'text' action in the chronological timeline.
+      if (typeof logTextAction === 'function') logTextAction();
     }, ms);
   });
 
@@ -196,32 +198,11 @@ export function buildIframeScript() {
     }
   });
 
-  // ⌘Z / ⌘⇧Z forwarding — keyboard events inside this sandboxed iframe
-  // don't bubble to the parent, so the browser's default contenteditable
-  // undo runs and our Yjs UndoManager never fires. Intercept and ask the
-  // parent to undo/redo through the collab provider.
-  function forwardUndo(redo) {
-    // Clear the "recently typed" gate so the upcoming text patch from
-    // the UndoManager isn't dropped by the keep-cursor protection.
-    for (var k in lastLocalInputAt) delete lastLocalInputAt[k];
-    window.parent.postMessage({
-      type: redo ? 'request-redo' : 'request-undo'
-    }, '*');
-  }
-  document.addEventListener('keydown', function(e) {
-    var mod = e.metaKey || e.ctrlKey;
-    if (!mod) return;
-    if (e.key && e.key.toLowerCase() === 'z') {
-      e.preventDefault();
-      forwardUndo(!!e.shiftKey);
-    }
-  });
-  // beforeinput catches the undo intent at a deeper level than keydown;
-  // some browser configurations skip the keydown path for historyUndo.
-  document.addEventListener('beforeinput', function(e) {
-    if (e.inputType === 'historyUndo') { e.preventDefault(); forwardUndo(false); }
-    if (e.inputType === 'historyRedo') { e.preventDefault(); forwardUndo(true); }
-  });
+  // [REMOVED in undo-redesign]
+  //   Old `forwardUndo` + bubble-phase keydown + beforeinput historyUndo
+  //   handlers used to all fire on a single Cmd+Z, causing the SAME action
+  //   to be popped TWICE. The new unified handler below (capture-phase
+  //   keydown only, with dedupe guard) replaces all three.
 
   // ─── Pick the best ancestor for non-text targets ───
   function pickTarget(node) {
@@ -529,6 +510,23 @@ export function buildIframeScript() {
 
     if (d.cmd === 'set-mode') applyMode(d.mode);
 
+    // [ADDITION] Parent broadcasts Yjs UndoManager stack events so the
+    // iframe-side actionLog can stay in lockstep with the real Yjs stack.
+    // Each stack-item-added (when not a redo) = one new yjs undo step.
+    // We push a synthetic 'text' entry so Cmd+Z handler pops it and
+    // forwards undo correctly.
+    if (d.cmd === 'yjs-stack-added' && !d.isRedo) {
+      // Avoid double-log: if logTextAction already pushed a 'text'
+      // entry within the merge window, just refresh its timestamp.
+      var last = actionLog[actionLog.length - 1];
+      if (last && last.type === 'text' && (Date.now() - last.ts) < TEXT_MERGE_WINDOW_MS) {
+        last.ts = Date.now();
+      } else {
+        actionLog.push({ type: 'text', ts: Date.now() });
+        redoLog.length = 0;
+      }
+    }
+
     if (d.cmd === 'mark-commented') {
       var el = document.querySelector('[data-block-id="' + d.id + '"]');
       if (el) el.setAttribute('data-commented', '1');
@@ -750,6 +748,8 @@ export function buildIframeScript() {
     }
     preChangeSnap = null;
     preChangeTarget = null;
+    // Tell the chronological log a style action just happened.
+    if (typeof logStyleAction === 'function') logStyleAction();
   }
   function undoStyleHistory() {
     commitStyleChange(); // 提交任何 pending
@@ -764,15 +764,90 @@ export function buildIframeScript() {
     applyStyleSnap(styleHistory[styleHistoryPtr].after);
     return true;
   }
-  // 拦截 Cmd+Z / Cmd+Shift+Z 在 capture 阶段，比原 handler 先跑
+  // ─── Chronological action log (text + style merged) ───
+  //
+  // Two separate undo stacks (style vs Yjs text) used to race each other:
+  // ⌘Z always tried style first, so an OLD color change would pop before a
+  // RECENT text edit. Now both kinds of edits are appended to one timeline
+  // and ⌘Z pops the actual most-recent one.
+  var actionLog = [];   // entries: { type: 'style'|'text', ts: number }
+  var redoLog   = [];
+  var TEXT_MERGE_WINDOW_MS = 220;   // a touch wider than Yjs captureTimeout (150)
+
+  function logTextAction() {
+    var last = actionLog[actionLog.length - 1];
+    if (last && last.type === 'text' && (Date.now() - last.ts) < TEXT_MERGE_WINDOW_MS) {
+      last.ts = Date.now();   // merge into the running text burst
+    } else {
+      actionLog.push({ type: 'text', ts: Date.now() });
+    }
+    redoLog.length = 0;
+  }
+  function logStyleAction() {
+    actionLog.push({ type: 'style', ts: Date.now() });
+    redoLog.length = 0;
+    // [FIX] Ask Yjs to end its current capture window so the NEXT text
+    // edit (within Yjs's 150ms captureTimeout) doesn't get merged into
+    // the same undo step as a previous text edit before this style change.
+    try {
+      window.parent.postMessage({ type: 'request-stop-capturing' }, '*');
+    } catch (e) {}
+  }
+  // Expose for the style commit path to use.
+  window.__hceLogStyleAction = logStyleAction;
+
+  // Unified ⌘Z / ⌘⇧Z handler — peels the top of the chronological log.
+  // [FIX] Dedupe guard: if same keydown fires twice in rapid succession
+  // (older versions had bubble + capture + beforeinput all firing for
+  // a single Cmd+Z), only the first handles. Prevents double-undo.
+  var __lastUndoTs = 0;
+  function __handleUndo(isRedo) {
+    var now = Date.now();
+    if (now - __lastUndoTs < 60) return; // already handled this keystroke
+    __lastUndoTs = now;
+    // [FIX] Flush any pending style changes BEFORE deciding what to undo —
+    // user might have just dragged a slider and pressed Cmd+Z immediately,
+    // we want that slider drag committed first so it can be undone.
+    if (typeof commitStyleChange === 'function') commitStyleChange();
+    // Reset typing gate so any incoming text patch from the undo lands.
+    for (var k in lastLocalInputAt) delete lastLocalInputAt[k];
+
+    if (isRedo) {
+      var top = redoLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (redoStyleHistory()) actionLog.push(top);
+        else redoLog.push(top);
+      } else {
+        window.parent.postMessage({ type: 'request-redo' }, '*');
+        actionLog.push(top);
+      }
+    } else {
+      var top = actionLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (undoStyleHistory()) redoLog.push(top);
+        else actionLog.push(top);
+      } else {
+        window.parent.postMessage({ type: 'request-undo' }, '*');
+        redoLog.push(top);
+      }
+    }
+  }
   document.addEventListener('keydown', function(e) {
     var meta = e.metaKey || e.ctrlKey;
     if (!meta || !e.key || e.key.toLowerCase() !== 'z') return;
-    var handled = e.shiftKey ? redoStyleHistory() : undoStyleHistory();
-    if (handled) {
-      e.preventDefault();
-      e.stopImmediatePropagation(); // 不让原 handler 再 forward 到 Yjs
-    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    __handleUndo(!!e.shiftKey);
+  }, true);
+  // Belt-and-suspenders: some browsers fire beforeinput historyUndo
+  // even when keydown is preventDefault'd. Dedupe via __lastUndoTs.
+  document.addEventListener('beforeinput', function(e) {
+    if (e.inputType !== 'historyUndo' && e.inputType !== 'historyRedo') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    __handleUndo(e.inputType === 'historyRedo');
   }, true);
   function rgbToHex(c) {
     if (!c) return '#000000';
@@ -791,43 +866,202 @@ export function buildIframeScript() {
     if (stylePanel) return stylePanel;
     var styleEl = document.createElement('style');
     styleEl.id = '__hce-style-panel-css';
-    styleEl.textContent = ''
-      + '#__hce-style-panel{position:fixed;z-index:2147483647;width:280px;'
-      + 'background:#1f1d2e;color:#e8e6f0;border:1px solid rgba(255,255,255,.08);'
-      + 'border-radius:12px;padding:14px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;'
-      + 'box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;}'
-      + '#__hce-style-panel label{display:block;color:#9b97b0;margin-bottom:4px;font-size:11px;}'
-      + '#__hce-style-panel .row{margin-bottom:10px;}'
-      + '#__hce-style-panel input[type=text]{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;font:12px ui-monospace,SFMono-Regular,monospace;box-sizing:border-box;}'
-      + '#__hce-style-panel input[type=color]{width:32px;height:32px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:transparent;cursor:pointer;padding:0;}'
-      + '#__hce-style-panel .colorrow{display:flex;gap:8px;align-items:center;}'
-      + '#__hce-style-panel input[type=range]{width:100%;}'
-      + '#__hce-style-panel select{width:100%;background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#fff;padding:6px 8px;border-radius:6px;}'
-      + '#__hce-style-panel .alignrow{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;}'
-      + '#__hce-style-panel .alignrow button{background:#0e0c1a;border:1px solid rgba(255,255,255,.08);color:#cfcadf;padding:6px 0;border-radius:6px;cursor:pointer;font-size:11px;}'
-      + '#__hce-style-panel .alignrow button.on{background:#5a4fcf;color:#fff;}'
-      + '#__hce-style-panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}'
-      + '#__hce-style-panel .head .ttl{font-size:13px;font-weight:600;}'
-      + '#__hce-style-panel .head button{background:none;border:none;color:#9b97b0;cursor:pointer;font-size:18px;line-height:1;}';
+    styleEl.textContent = [
+      // Wrapper — compact white panel
+      '#__hce-style-panel{position:fixed;z-index:2147483647;width:248px;background:#ffffff;color:#1a1a1a;',
+      'border:1px solid #e7e5e4;border-radius:12px;padding:0;',
+      'font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;',
+      'box-shadow:0 12px 32px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.06);display:none;}',
+      // Header / drag handle
+      '#__hce-style-panel .sp-head{display:flex;justify-content:space-between;align-items:center;',
+      'padding:10px 12px;border-bottom:1px solid #f0efed;cursor:move;user-select:none;}',
+      '#__hce-style-panel.dragging{box-shadow:0 16px 40px rgba(15,23,42,.18),0 4px 10px rgba(15,23,42,.08);}',
+      '#__hce-style-panel .sp-head .ttl{font-size:12px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px;}',
+      '#__hce-style-panel .sp-head .ttl::before{content:"⋮⋮";color:#a8a29e;letter-spacing:-2px;font-size:13px;}',
+      '#__hce-style-panel .sp-head .close{background:none;border:none;color:#a8a29e;cursor:pointer;',
+      'font-size:16px;line-height:1;padding:2px 6px;border-radius:4px;}',
+      '#__hce-style-panel .sp-head .close:hover{background:#f5f5f4;color:#1a1a1a;}',
+      // Body
+      '#__hce-style-panel .sp-body{padding:10px 12px 12px;}',
+      '#__hce-style-panel .row{margin-bottom:10px;}',
+      '#__hce-style-panel .row:last-child{margin-bottom:0;}',
+      '#__hce-style-panel label,#__hce-style-panel .label{display:block;color:#737373;margin-bottom:6px;',
+      'font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;}',
+      // Row head (label + value/action on right)
+      '#__hce-style-panel .row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}',
+      '#__hce-style-panel .row-head .label{margin-bottom:0;}',
+      '#__hce-style-panel .row-head .val{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:#44403c;}',
+      // Format buttons (B / I / U)
+      '#__hce-style-panel .biu-row{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}',
+      '#__hce-style-panel .biu-btn{background:#fafaf9;border:1px solid #e7e5e4;color:#44403c;',
+      'padding:0;border-radius:6px;cursor:pointer;font-size:14px;height:30px;display:flex;',
+      'align-items:center;justify-content:center;font-family:Georgia,Cambria,Times,serif;}',
+      '#__hce-style-panel .biu-btn[data-prop="fontWeight"]{font-weight:700;}',
+      '#__hce-style-panel .biu-btn[data-prop="fontStyle"]{font-style:italic;}',
+      '#__hce-style-panel .biu-btn[data-prop="textDecoration"]{text-decoration:underline;}',
+      '#__hce-style-panel .biu-btn:hover{background:#f0efed;color:#1a1a1a;}',
+      '#__hce-style-panel .biu-btn.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}',
+      // Compact reset icon button (in color row head)
+      '#__hce-style-panel .reset-btn{background:transparent;border:none;color:#737373;cursor:pointer;',
+      'font-size:13px;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:3px;',
+      'line-height:1;}',
+      '#__hce-style-panel .reset-btn:hover{background:#f5f5f4;color:#1a1a1a;}',
+      '#__hce-style-panel .reset-btn:disabled{opacity:.35;cursor:default;}',
+      // Palette + recent — small fixed-size swatches in a flex row
+      '#__hce-style-panel .palette,#__hce-style-panel .recent{display:flex;flex-wrap:wrap;gap:6px;}',
+      '#__hce-style-panel .sw{width:22px;height:22px;border-radius:5px;border:1px solid #e7e5e4;',
+      'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;flex-shrink:0;}',
+      '#__hce-style-panel .sw:hover{transform:scale(1.12);box-shadow:0 2px 6px rgba(0,0,0,.12);z-index:1;}',
+      '#__hce-style-panel .sw.on{outline:2px solid #1a1a1a;outline-offset:2px;}',
+      '#__hce-style-panel .sw.original::after{content:"";position:absolute;bottom:-4px;left:50%;',
+      'transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:#1a1a1a;}',
+      // Recent swatch × delete on hover
+      '#__hce-style-panel .recent .sw .x{position:absolute;top:-5px;right:-5px;width:13px;height:13px;',
+      'background:#1a1a1a;color:#fff;border-radius:50%;border:none;cursor:pointer;font-size:9px;',
+      'line-height:13px;text-align:center;padding:0;display:none;}',
+      '#__hce-style-panel .recent .sw:hover .x{display:block;}',
+      '#__hce-style-panel .recent-label{margin-top:8px;}',
+      // Number input next to size slider
+      '#__hce-style-panel .num-input{width:48px;height:22px;padding:0 6px;background:#fafaf9;',
+      'border:1px solid #e7e5e4;border-radius:4px;font:11px ui-monospace,SFMono-Regular,monospace;',
+      'color:#1a1a1a;text-align:right;-moz-appearance:textfield;}',
+      '#__hce-style-panel .num-input::-webkit-outer-spin-button,',
+      '#__hce-style-panel .num-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}',
+      '#__hce-style-panel .num-input:focus{outline:none;border-color:#1a1a1a;box-shadow:0 0 0 2px rgba(26,26,26,.06);}',
+      // Save-to-recent button under picker
+      '#__hce-style-panel .save-row{display:flex;justify-content:flex-end;}',
+      '#__hce-style-panel .save-btn{background:#1a1a1a;color:#fff;border:none;border-radius:5px;',
+      'padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;',
+      'align-items:center;gap:4px;}',
+      '#__hce-style-panel .save-btn:hover{background:#44403c;}',
+      '#__hce-style-panel .save-btn:disabled{opacity:.4;cursor:default;}',
+      // Custom expander
+      '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:11px;',
+      'cursor:pointer;padding:6px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;',
+      'font-weight:500;}',
+      '#__hce-style-panel .more-toggle:hover{color:#1a1a1a;}',
+      '#__hce-style-panel .more-toggle .chev{transition:transform 160ms;}',
+      '#__hce-style-panel .more-toggle.open .chev{transform:rotate(90deg);}',
+      // HSV picker — drag-only
+      '#__hce-style-panel .picker{display:none;flex-direction:column;gap:8px;padding-top:8px;}',
+      '#__hce-style-panel .picker.show{display:flex;}',
+      '#__hce-style-panel .sv{position:relative;width:100%;height:120px;border-radius:8px;cursor:crosshair;',
+      'background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent),#f00;',
+      'overflow:hidden;border:1px solid #e7e5e4;}',
+      '#__hce-style-panel .sv-thumb{position:absolute;width:14px;height:14px;border-radius:50%;',
+      'border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4),0 1px 3px rgba(0,0,0,.3);',
+      'transform:translate(-50%,-50%);pointer-events:none;}',
+      '#__hce-style-panel .hue{position:relative;width:100%;height:12px;border-radius:6px;cursor:pointer;',
+      'background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);border:1px solid #e7e5e4;}',
+      '#__hce-style-panel .hue-thumb{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;',
+      'background:#fff;border:2px solid #1a1a1a;transform:translate(-50%,-50%);pointer-events:none;}',
+      // Range slider
+      '#__hce-style-panel input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;',
+      'background:#e7e5e4;border-radius:2px;outline:none;}',
+      '#__hce-style-panel input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;',
+      'width:14px;height:14px;border-radius:50%;background:#1a1a1a;cursor:pointer;border:2px solid #fff;',
+      'box-shadow:0 1px 3px rgba(0,0,0,.2);}',
+      '#__hce-style-panel input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;',
+      'background:#1a1a1a;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.2);}',
+      // Alignment buttons
+      '#__hce-style-panel .alignrow{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}',
+      '#__hce-style-panel .alignrow button{background:#fafaf9;border:1px solid #e7e5e4;color:#44403c;',
+      'padding:6px 0;border-radius:6px;cursor:pointer;font-size:10px;font-weight:500;text-transform:capitalize;}',
+      '#__hce-style-panel .alignrow button:hover{background:#f0efed;color:#1a1a1a;}',
+      '#__hce-style-panel .alignrow button.on{background:#1a1a1a;color:#fff;border-color:#1a1a1a;}',
+    ].join('');
     document.head.appendChild(styleEl);
     stylePanel = document.createElement('div');
     stylePanel.id = '__hce-style-panel';
+
     stylePanel.innerHTML =
-        '<div class="head"><span class="ttl">样式</span><button class="close" title="关闭">×</button></div>'
-      + '<div class="row"><label>文字颜色</label><div class="colorrow"><input type="color" class="sp-color"><input type="text" class="sp-color-txt"></div></div>'
-      + '<div class="row"><label class="sp-fs-l">字号 <span class="sp-fs-v">14</span>px</label><input type="range" class="sp-fs" min="10" max="120"></div>'
-      + '<div class="row"><label>对齐</label><div class="alignrow">'
-        + '<button data-align="left">left</button>'
-        + '<button data-align="center">center</button>'
-        + '<button data-align="right">right</button>'
-        + '<button data-align="justify">justify</button>'
-      + '</div></div>'
-      + '<div class="row"><label class="sp-pd-l">内边距 <span class="sp-pd-v">0</span>px</label><input type="range" class="sp-pd" min="0" max="80"></div>';
+        '<div class="sp-head"><span class="ttl">Style</span><button class="close" title="Close">×</button></div>'
+      + '<div class="sp-body">'
+
+      // Format: B / I / U
+      + '<div class="row">'
+        + '<div class="biu-row">'
+          + '<button class="biu-btn" data-prop="fontWeight" title="Bold">B</button>'
+          + '<button class="biu-btn" data-prop="fontStyle"  title="Italic">I</button>'
+          + '<button class="biu-btn" data-prop="textDecoration" title="Underline">U</button>'
+        + '</div>'
+      + '</div>'
+
+      // Alignment
+      + '<div class="row">'
+        + '<div class="alignrow">'
+          + '<button data-align="left">Left</button>'
+          + '<button data-align="center">Center</button>'
+          + '<button data-align="right">Right</button>'
+          + '<button data-align="justify">Justify</button>'
+        + '</div>'
+      + '</div>'
+
+      // Size — slider + editable number
+      + '<div class="row">'
+        + '<div class="row-head"><span class="label">Size</span>'
+          + '<input type="number" class="num-input sp-fs-input" min="6" max="200" step="1">'
+        + '</div>'
+        + '<input type="range" class="sp-fs" min="10" max="120">'
+      + '</div>'
+
+      // Color
+      + '<div class="row sp-color-row">'
+        + '<div class="row-head">'
+          + '<span class="label">Color</span>'
+          + '<button class="reset-btn sp-reset" title="Revert to original color">↶ Reset</button>'
+        + '</div>'
+        + '<div class="palette sp-palette"><!-- filled by renderPalette() --></div>'
+        + '<div class="sp-recent-wrap" style="display:none;">'
+          + '<span class="label recent-label">Recent</span>'
+          + '<div class="recent sp-recent"></div>'
+        + '</div>'
+        + '<button class="more-toggle sp-more-toggle" type="button"><span class="chev">▸</span> More colors</button>'
+        + '<div class="picker sp-picker">'
+          + '<div class="sv sp-sv"><div class="sv-thumb sp-sv-thumb"></div></div>'
+          + '<div class="hue sp-hue"><div class="hue-thumb sp-hue-thumb"></div></div>'
+          + '<div class="save-row"><button class="save-btn sp-save" type="button">＋ Save</button></div>'
+        + '</div>'
+      + '</div>'
+
+      + '</div>';
     document.body.appendChild(stylePanel);
     // [FIX] 阻止面板内的事件冒泡到 document — 否则点滑块松手时 click 事件
     // 会冒泡到 iframe-injection 的全局 click handler，触发 hideTools 把面板关了
     stylePanel.addEventListener('click', function(e) { e.stopPropagation(); });
     stylePanel.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+    // ─── Drag the panel by its header ───
+    (function makeDraggable() {
+      var head = stylePanel.querySelector('.sp-head');
+      var startX, startY, startLeft, startTop;
+      head.addEventListener('mousedown', function(e) {
+        // Ignore drag if user clicked the close button
+        if (e.target.closest('.close')) return;
+        e.preventDefault();
+        var r = stylePanel.getBoundingClientRect();
+        startX = e.clientX; startY = e.clientY;
+        startLeft = r.left;  startTop = r.top;
+        stylePanel.classList.add('dragging');
+        function move(ev) {
+          var nx = startLeft + (ev.clientX - startX);
+          var ny = startTop  + (ev.clientY - startY);
+          // Clamp inside viewport (leave a small margin)
+          var w = stylePanel.offsetWidth, h = stylePanel.offsetHeight;
+          nx = Math.max(8, Math.min(window.innerWidth  - w - 8, nx));
+          ny = Math.max(8, Math.min(window.innerHeight - h - 8, ny));
+          stylePanel.style.left = nx + 'px';
+          stylePanel.style.top  = ny + 'px';
+        }
+        function up() {
+          stylePanel.classList.remove('dragging');
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+        }
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      });
+    })();
 
     function apply(prop, val) {
       if (!styleTarget) return;
@@ -844,44 +1078,390 @@ export function buildIframeScript() {
       }
       debouncedCommitStyle();
     }
+    // Expose for module-level helpers (renderPalette / renderRecent etc.)
+    stylePanel.__hceApply = apply;
     stylePanel.querySelector('.close').onclick = hideStylePanel;
-    var cIn = stylePanel.querySelector('.sp-color');
-    var cTx = stylePanel.querySelector('.sp-color-txt');
-    cIn.oninput = function() { apply('color', cIn.value); cTx.value = cIn.value; };
-    cTx.onchange = function() { apply('color', cTx.value); cIn.value = rgbToHex(cTx.value); };
+
+    // Refresh reset button enabled state after a color change
+    function refreshResetState(color) {
+      if (!styleTarget) return;
+      var hex = rgbToHex(color);
+      var orig = styleTarget.__hceOriginalColor || hex;
+      stylePanel.querySelector('.sp-reset').disabled = (hex.toLowerCase() === orig.toLowerCase());
+    }
+
+    // Reset button — revert to original color captured when panel opened
+    stylePanel.querySelector('.sp-reset').addEventListener('click', function() {
+      if (!styleTarget || !styleTarget.__hceOriginalColor) return;
+      var c = styleTarget.__hceOriginalColor;
+      apply('color', c);
+      markActiveSwatch(c);
+      refreshResetState(c);
+    });
+
+    // ─── Bold / Italic / Underline toggles ───
+    function isFormatActive(prop, target) {
+      var cs = getComputedStyle(target);
+      if (prop === 'fontWeight') return parseInt(cs.fontWeight, 10) >= 600;
+      if (prop === 'fontStyle')  return cs.fontStyle === 'italic' || cs.fontStyle === 'oblique';
+      if (prop === 'textDecoration') return (cs.textDecorationLine || cs.textDecoration || '').indexOf('underline') !== -1;
+      return false;
+    }
+    stylePanel.querySelectorAll('.biu-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (!styleTarget) return;
+        var prop = btn.getAttribute('data-prop');
+        var active = isFormatActive(prop, styleTarget);
+        if (prop === 'fontWeight')   apply('fontWeight', active ? '400' : '700');
+        else if (prop === 'fontStyle')   apply('fontStyle',  active ? 'normal' : 'italic');
+        else if (prop === 'textDecoration') apply('textDecoration', active ? 'none' : 'underline');
+        btn.classList.toggle('on', !active);
+      });
+    });
+
+    // Custom expander → reveals HSV picker
+    var moreBtn = stylePanel.querySelector('.sp-more-toggle');
+    var picker = stylePanel.querySelector('.sp-picker');
+    moreBtn.addEventListener('click', function() {
+      var open = moreBtn.classList.toggle('open');
+      picker.classList.toggle('show', open);
+      // When opening, sync picker thumbs to current color so it's not a fresh red square.
+      if (open && styleTarget) {
+        var cur = rgbToHex(getComputedStyle(styleTarget).color);
+        setPickerFromHex(cur);
+      }
+    });
+
+    // HSV picker — drag in SV square + hue strip
+    var sv = stylePanel.querySelector('.sp-sv');
+    var svThumb = stylePanel.querySelector('.sp-sv-thumb');
+    var hue = stylePanel.querySelector('.sp-hue');
+    var hueThumb = stylePanel.querySelector('.sp-hue-thumb');
+    var hsvH = 0, hsvS = 1, hsvV = 1;   // current HSV state
+
+    function updateSvBackground() {
+      sv.style.background =
+        'linear-gradient(to top,#000,transparent),'
+        + 'linear-gradient(to right,#fff,transparent),'
+        + 'hsl(' + hsvH + ',100%,50%)';
+    }
+    function currentPickerHex() { return hsvToHex(hsvH, hsvS, hsvV); }
+    function applyPickerColor() {
+      var hex = currentPickerHex();
+      apply('color', hex);
+      markActiveSwatch(hex);
+      refreshResetState(hex);
+      // Don't auto-push to Recent — only on explicit Save click.
+    }
+    function setPickerFromHex(hex) {
+      var hsv = hexToHsv(hex);
+      hsvH = hsv.h; hsvS = hsv.s; hsvV = hsv.v;
+      updateSvBackground();
+      // Position thumbs
+      var svRect = sv.getBoundingClientRect();
+      svThumb.style.left = (hsv.s * 100) + '%';
+      svThumb.style.top = ((1 - hsv.v) * 100) + '%';
+      hueThumb.style.left = ((hsv.h / 360) * 100) + '%';
+    }
+
+    function dragHandler(target, onMove) {
+      function down(e) {
+        e.preventDefault();
+        onMove(e);
+        function move(ev) { onMove(ev); }
+        function up() {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+          document.removeEventListener('touchmove', move);
+          document.removeEventListener('touchend', up);
+        }
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+        document.addEventListener('touchmove', move, { passive: false });
+        document.addEventListener('touchend', up);
+      }
+      target.addEventListener('mousedown', down);
+      target.addEventListener('touchstart', down, { passive: false });
+    }
+    dragHandler(sv, function(e) {
+      var r = sv.getBoundingClientRect();
+      var pt = (e.touches && e.touches[0]) || e;
+      var x = Math.max(0, Math.min(1, (pt.clientX - r.left) / r.width));
+      var y = Math.max(0, Math.min(1, (pt.clientY - r.top) / r.height));
+      hsvS = x; hsvV = 1 - y;
+      svThumb.style.left = (x * 100) + '%';
+      svThumb.style.top  = (y * 100) + '%';
+      applyPickerColor();
+    });
+    dragHandler(hue, function(e) {
+      var r = hue.getBoundingClientRect();
+      var pt = (e.touches && e.touches[0]) || e;
+      var x = Math.max(0, Math.min(1, (pt.clientX - r.left) / r.width));
+      hsvH = x * 360;
+      hueThumb.style.left = (x * 100) + '%';
+      updateSvBackground();
+      applyPickerColor();
+    });
+
+    // Save button — explicit "add current picker color to Recent"
+    var saveBtn = stylePanel.querySelector('.sp-save');
+    saveBtn.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      pushRecent(currentPickerHex());
+    });
+
+    // Font size — slider + number input, kept in sync
     var fs = stylePanel.querySelector('.sp-fs');
-    fs.oninput = function() {
-      apply('fontSize', fs.value + 'px');
-      stylePanel.querySelector('.sp-fs-v').textContent = fs.value;
-    };
+    var fsInput = stylePanel.querySelector('.sp-fs-input');
+    function applyFontSize(n) {
+      n = Math.max(6, Math.min(200, parseInt(n, 10) || 14));
+      apply('fontSize', n + 'px');
+      fs.value = Math.min(parseInt(fs.max, 10), n);
+      fsInput.value = n;
+    }
+    fs.oninput = function() { applyFontSize(fs.value); };
+    fsInput.addEventListener('input',  function() { applyFontSize(fsInput.value); });
+    fsInput.addEventListener('change', function() { applyFontSize(fsInput.value); });
+    // Alignment
     stylePanel.querySelectorAll('.alignrow button').forEach(function(btn) {
       btn.onclick = function() {
         apply('textAlign', btn.dataset.align);
         stylePanel.querySelectorAll('.alignrow button').forEach(function(b){ b.classList.toggle('on', b === btn); });
       };
     });
-    var pd = stylePanel.querySelector('.sp-pd');
-    pd.oninput = function() {
-      apply('padding', pd.value + 'px');
-      stylePanel.querySelector('.sp-pd-v').textContent = pd.value;
-    };
+
+    // Expose for module-level helpers (renderPalette / renderRecent)
+    stylePanel.__hceSetPickerFromHex = setPickerFromHex;
+    stylePanel.__hceRefreshResetState = refreshResetState;
     return stylePanel;
+  }
+
+  // ─── Current page-derived palette (regenerated each panel open) ───
+  var currentPalette = [];
+
+  // ─── Recent colors (custom picks, in-memory) ───
+  var recentColors = [];
+  var RECENT_LIMIT = 5;
+  function pushRecent(hex) {
+    hex = hex.toLowerCase();
+    // skip if already in palette (would be redundant)
+    if (currentPalette.map(function(c){return c.toLowerCase();}).indexOf(hex) !== -1) return;
+    recentColors = [hex].concat(recentColors.filter(function(c){ return c !== hex; })).slice(0, RECENT_LIMIT);
+    renderRecent();
+  }
+  function removeRecent(hex) {
+    hex = hex.toLowerCase();
+    recentColors = recentColors.filter(function(c) { return c.toLowerCase() !== hex; });
+    renderRecent();
+  }
+  function renderRecent() {
+    if (!stylePanel) return;
+    var wrap = stylePanel.querySelector('.sp-recent-wrap');
+    var row  = stylePanel.querySelector('.sp-recent');
+    if (!recentColors.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+    wrap.style.display = 'block';
+    row.innerHTML = '';
+    recentColors.forEach(function(c) {
+      var b = document.createElement('button');
+      b.className = 'sw';
+      b.setAttribute('data-color', c);
+      b.style.background = c;
+      b.title = c;
+      b.addEventListener('click', function(ev) {
+        if (ev.target && ev.target.classList && ev.target.classList.contains('x')) return; // click on × handled separately
+        if (stylePanel.__hceApply) stylePanel.__hceApply('color', c);
+        markActiveSwatch(c);
+        if (stylePanel.__hceRefreshResetState) stylePanel.__hceRefreshResetState(c);
+        if (stylePanel.__hceSetPickerFromHex) stylePanel.__hceSetPickerFromHex(c);
+      });
+      // × delete button
+      var x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '×';
+      x.title = 'Remove from recent';
+      x.addEventListener('click', function(ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        removeRecent(c);
+      });
+      b.appendChild(x);
+      row.appendChild(b);
+    });
+  }
+
+  // ─── Extract page-derived palette ───
+  // Walk the iframe body, collect distinctive colors used. If fewer than 5
+  // distinct ones found, fill the rest with hue-rotated complements.
+  function extractPageColors() {
+    var counts = Object.create(null);
+    var firstSeen = Object.create(null);
+    var seq = 0;
+
+    function consider(c) {
+      if (!c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)') return;
+      var hex = rgbToHex(c).toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(hex)) return;
+      var r = parseInt(hex.slice(1,3), 16);
+      var g = parseInt(hex.slice(3,5), 16);
+      var b = parseInt(hex.slice(5,7), 16);
+      var max = Math.max(r,g,b), min = Math.min(r,g,b);
+      if (max - min < 32) return;     // near-grey, skip
+      if (max < 40) return;           // near-black, skip
+      if (min > 230 && max - min < 50) return;   // near-white pastel, skip
+      counts[hex] = (counts[hex] || 0) + 1;
+      if (firstSeen[hex] === undefined) firstSeen[hex] = seq++;
+    }
+
+    document.querySelectorAll('body *').forEach(function(el) {
+      // Skip our injected UI to avoid polluting the palette.
+      if (el.closest && (el.closest('#__hce-style-panel') || el.closest('#__hce-tools') || el.closest('#__hce-handle'))) return;
+      var cs;
+      try { cs = getComputedStyle(el); } catch { return; }
+      consider(cs.color);
+      consider(cs.backgroundColor);
+      consider(cs.borderColor);
+    });
+
+    var picked = Object.keys(counts).sort(function(a, b) {
+      if (counts[a] !== counts[b]) return counts[b] - counts[a];
+      return firstSeen[a] - firstSeen[b];
+    }).slice(0, 5);
+
+    // If empty, seed with a sensible default
+    if (picked.length === 0) picked = ['#ff5a1f'];
+
+    // Fill up to 5 with hue-rotated complementary colors of the first pick
+    var i = 1;
+    while (picked.length < 5 && i < 30) {
+      var src = picked[i % picked.length] || picked[0];
+      var hsv = hexToHsv(src);
+      var step = i <= 3 ? 180 : (60 * i);
+      var nh = (hsv.h + step) % 360;
+      var nc = hsvToHex(nh, Math.max(0.5, hsv.s || 0.7), Math.max(0.5, hsv.v || 0.7)).toLowerCase();
+      if (picked.indexOf(nc) === -1) picked.push(nc);
+      i++;
+    }
+    currentPalette = picked.slice(0, 5);
+    return currentPalette;
+  }
+
+  function renderPalette() {
+    if (!stylePanel) return;
+    var row = stylePanel.querySelector('.sp-palette');
+    row.innerHTML = '';
+    // Build display list: [original, ...5 recommended], dedupe.
+    var orig = (styleTarget && styleTarget.__hceOriginalColor) ? styleTarget.__hceOriginalColor.toLowerCase() : null;
+    var list = [];
+    if (orig) list.push(orig);
+    currentPalette.forEach(function(c) {
+      if (list.indexOf(c.toLowerCase()) === -1) list.push(c);
+    });
+    list = list.slice(0, 6);
+    list.forEach(function(c, idx) {
+      var b = document.createElement('button');
+      b.className = 'sw' + (orig && c.toLowerCase() === orig ? ' original' : '');
+      b.setAttribute('data-color', c);
+      b.style.background = c;
+      b.title = (orig && c.toLowerCase() === orig) ? (c + ' (original)') : c;
+      b.addEventListener('click', function() {
+        if (stylePanel.__hceApply) stylePanel.__hceApply('color', c);
+        markActiveSwatch(c);
+        if (stylePanel.__hceRefreshResetState) stylePanel.__hceRefreshResetState(c);
+        if (stylePanel.__hceSetPickerFromHex) stylePanel.__hceSetPickerFromHex(c);
+      });
+      row.appendChild(b);
+    });
+  }
+
+  // ─── HSV ↔ HEX conversion ───
+  function hsvToHex(h, s, v) {
+    h = (h % 360 + 360) % 360;
+    var c = v * s;
+    var x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    var m = v - c;
+    var r, g, b;
+    if (h < 60)      { r = c; g = x; b = 0; }
+    else if (h < 120){ r = x; g = c; b = 0; }
+    else if (h < 180){ r = 0; g = c; b = x; }
+    else if (h < 240){ r = 0; g = x; b = c; }
+    else if (h < 300){ r = x; g = 0; b = c; }
+    else             { r = c; g = 0; b = x; }
+    function p(n) { return Math.round((n + m) * 255).toString(16).padStart(2, '0'); }
+    return '#' + p(r) + p(g) + p(b);
+  }
+  function hexToHsv(hex) {
+    hex = hex.replace('#','');
+    if (hex.length === 3) hex = hex.split('').map(function(c){return c+c;}).join('');
+    var r = parseInt(hex.slice(0,2),16)/255;
+    var g = parseInt(hex.slice(2,4),16)/255;
+    var b = parseInt(hex.slice(4,6),16)/255;
+    var max = Math.max(r,g,b), min = Math.min(r,g,b);
+    var d = max - min;
+    var h = 0;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    var s = max === 0 ? 0 : d / max;
+    var v = max;
+    return { h: h, s: s, v: v };
+  }
+
+  function markActiveSwatch(color) {
+    if (!stylePanel) return;
+    var hex = rgbToHex(color).toLowerCase();
+    stylePanel.querySelectorAll('.sp-palette .sw').forEach(function(sw) {
+      sw.classList.toggle('on', sw.getAttribute('data-color').toLowerCase() === hex);
+    });
   }
   function populateStylePanel(el) {
     var p = ensureStylePanel();
     var cs = getComputedStyle(el);
     var hexC = rgbToHex(cs.color);
-    p.querySelector('.sp-color').value = hexC;
-    p.querySelector('.sp-color-txt').value = cs.color;
+
+    // Capture the original color ONCE per element. Reset reverts to it.
+    if (!el.__hceOriginalColor) {
+      el.__hceOriginalColor = hexC;
+    }
+
+    // Build the page-derived palette + render it.
+    extractPageColors();
+    renderPalette();
+    renderRecent();
+
+    // Reset button state (enabled if current color !== original)
+    var resetBtn = p.querySelector('.sp-reset');
+    resetBtn.disabled = (hexC.toLowerCase() === el.__hceOriginalColor.toLowerCase());
+
+    // Active swatch in the palette, and HSV picker thumbs if open
+    markActiveSwatch(hexC);
+    if (p.__hceSetPickerFromHex && p.querySelector('.sp-picker').classList.contains('show')) {
+      p.__hceSetPickerFromHex(hexC);
+    }
+
+    // B / I / U toggle state
+    p.querySelectorAll('.biu-btn').forEach(function(btn) {
+      var prop = btn.getAttribute('data-prop');
+      var active = false;
+      if (prop === 'fontWeight')   active = parseInt(cs.fontWeight, 10) >= 600;
+      else if (prop === 'fontStyle')   active = (cs.fontStyle === 'italic' || cs.fontStyle === 'oblique');
+      else if (prop === 'textDecoration') active = ((cs.textDecorationLine || cs.textDecoration || '').indexOf('underline') !== -1);
+      btn.classList.toggle('on', active);
+    });
+
+    // Size + alignment
     var fs = pxNum(cs.fontSize);
-    p.querySelector('.sp-fs').value = fs;
-    p.querySelector('.sp-fs-v').textContent = fs;
+    p.querySelector('.sp-fs').value = Math.min(120, fs);
+    var fsInput = p.querySelector('.sp-fs-input');
+    if (fsInput) fsInput.value = fs;
     p.querySelectorAll('.alignrow button').forEach(function(b){
       b.classList.toggle('on', b.dataset.align === cs.textAlign);
     });
-    var pd = pxNum(cs.padding);
-    p.querySelector('.sp-pd').value = pd;
-    p.querySelector('.sp-pd-v').textContent = pd;
   }
   function positionStylePanel(el) {
     var p = ensureStylePanel();
@@ -906,6 +1486,17 @@ export function buildIframeScript() {
     if (stylePanel) stylePanel.style.display = 'none';
     styleTarget = null;
   };
+
+  // Click anywhere outside the panel (and not on the toolbar that owns it)
+  // closes the panel. Capture phase so we beat other listeners.
+  document.addEventListener('mousedown', function(e) {
+    if (!stylePanel || stylePanel.style.display !== 'block') return;
+    if (e.target.closest && (
+        e.target.closest('#__hce-style-panel') ||
+        e.target.closest('#__hce-tools') ||
+        e.target.closest('#__hce-handle'))) return;
+    hideStylePanel();
+  }, true);
   function toggleStylePanel(el) {
     if (stylePanel && stylePanel.style.display === 'block' && styleTarget === el) {
       hideStylePanel();
