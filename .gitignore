@@ -7,3 +7,5 @@ dist/
 build/
 .env
 .env.local
+.guizang-skill/
+.agents/
