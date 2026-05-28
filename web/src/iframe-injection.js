@@ -180,6 +180,8 @@ export function buildIframeScript() {
         id: id,
         text: el.textContent
       }, '*');
+      // Log this as a 'text' action in the chronological timeline.
+      if (typeof logTextAction === 'function') logTextAction();
     }, ms);
   });
 
@@ -200,13 +202,29 @@ export function buildIframeScript() {
   // don't bubble to the parent, so the browser's default contenteditable
   // undo runs and our Yjs UndoManager never fires. Intercept and ask the
   // parent to undo/redo through the collab provider.
-  function forwardUndo(redo) {
-    // Clear the "recently typed" gate so the upcoming text patch from
-    // the UndoManager isn't dropped by the keep-cursor protection.
+  function forwardUndo(isRedo) {
+    // Drains through the chronological actionLog/redoLog so both ⌘Z and
+    // beforeinput historyUndo end up doing the same right thing.
     for (var k in lastLocalInputAt) delete lastLocalInputAt[k];
-    window.parent.postMessage({
-      type: redo ? 'request-redo' : 'request-undo'
-    }, '*');
+    if (isRedo) {
+      var top = redoLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (redoStyleHistory()) actionLog.push(top); else redoLog.push(top);
+      } else {
+        window.parent.postMessage({ type: 'request-redo' }, '*');
+        actionLog.push(top);
+      }
+    } else {
+      var top = actionLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (undoStyleHistory()) redoLog.push(top); else actionLog.push(top);
+      } else {
+        window.parent.postMessage({ type: 'request-undo' }, '*');
+        redoLog.push(top);
+      }
+    }
   }
   document.addEventListener('keydown', function(e) {
     var mod = e.metaKey || e.ctrlKey;
@@ -750,6 +768,8 @@ export function buildIframeScript() {
     }
     preChangeSnap = null;
     preChangeTarget = null;
+    // Tell the chronological log a style action just happened.
+    if (typeof logStyleAction === 'function') logStyleAction();
   }
   function undoStyleHistory() {
     commitStyleChange(); // 提交任何 pending
@@ -764,14 +784,62 @@ export function buildIframeScript() {
     applyStyleSnap(styleHistory[styleHistoryPtr].after);
     return true;
   }
-  // 拦截 Cmd+Z / Cmd+Shift+Z 在 capture 阶段，比原 handler 先跑
+  // ─── Chronological action log (text + style merged) ───
+  //
+  // Two separate undo stacks (style vs Yjs text) used to race each other:
+  // ⌘Z always tried style first, so an OLD color change would pop before a
+  // RECENT text edit. Now both kinds of edits are appended to one timeline
+  // and ⌘Z pops the actual most-recent one.
+  var actionLog = [];   // entries: { type: 'style'|'text', ts: number }
+  var redoLog   = [];
+  var TEXT_MERGE_WINDOW_MS = 220;   // a touch wider than Yjs captureTimeout (150)
+
+  function logTextAction() {
+    var last = actionLog[actionLog.length - 1];
+    if (last && last.type === 'text' && (Date.now() - last.ts) < TEXT_MERGE_WINDOW_MS) {
+      last.ts = Date.now();   // merge into the running text burst
+    } else {
+      actionLog.push({ type: 'text', ts: Date.now() });
+    }
+    redoLog.length = 0;
+  }
+  function logStyleAction() {
+    actionLog.push({ type: 'style', ts: Date.now() });
+    redoLog.length = 0;
+  }
+  // Expose for the style commit path to use.
+  window.__hceLogStyleAction = logStyleAction;
+
+  // Unified ⌘Z / ⌘⇧Z handler — peels the top of the chronological log.
   document.addEventListener('keydown', function(e) {
     var meta = e.metaKey || e.ctrlKey;
     if (!meta || !e.key || e.key.toLowerCase() !== 'z') return;
-    var handled = e.shiftKey ? redoStyleHistory() : undoStyleHistory();
-    if (handled) {
-      e.preventDefault();
-      e.stopImmediatePropagation(); // 不让原 handler 再 forward 到 Yjs
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    var isRedo = e.shiftKey;
+    // Reset the typing gate so any incoming text patch from the undo lands.
+    for (var k in lastLocalInputAt) delete lastLocalInputAt[k];
+
+    if (isRedo) {
+      var top = redoLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (redoStyleHistory()) actionLog.push(top);
+        else redoLog.push(top);   // failed, put back
+      } else {
+        window.parent.postMessage({ type: 'request-redo' }, '*');
+        actionLog.push(top);
+      }
+    } else {
+      var top = actionLog.pop();
+      if (!top) return;
+      if (top.type === 'style') {
+        if (undoStyleHistory()) redoLog.push(top);
+        else actionLog.push(top);
+      } else {
+        window.parent.postMessage({ type: 'request-undo' }, '*');
+        redoLog.push(top);
+      }
     }
   }, true);
   function rgbToHex(c) {
@@ -832,18 +900,34 @@ export function buildIframeScript() {
       'line-height:1;}',
       '#__hce-style-panel .reset-btn:hover{background:#f5f5f4;color:#1a1a1a;}',
       '#__hce-style-panel .reset-btn:disabled{opacity:.35;cursor:default;}',
-      // Palette + recent
-      '#__hce-style-panel .palette,#__hce-style-panel .recent{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}',
-      '#__hce-style-panel .sw{width:100%;aspect-ratio:1;border-radius:6px;border:1px solid #e7e5e4;',
-      'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;}',
-      '#__hce-style-panel .sw:hover{transform:scale(1.08);box-shadow:0 2px 6px rgba(0,0,0,.12);}',
+      // Palette + recent — small fixed-size swatches in a flex row
+      '#__hce-style-panel .palette,#__hce-style-panel .recent{display:flex;flex-wrap:wrap;gap:6px;}',
+      '#__hce-style-panel .sw{width:22px;height:22px;border-radius:5px;border:1px solid #e7e5e4;',
+      'cursor:pointer;padding:0;position:relative;transition:transform 80ms,box-shadow 80ms;flex-shrink:0;}',
+      '#__hce-style-panel .sw:hover{transform:scale(1.12);box-shadow:0 2px 6px rgba(0,0,0,.12);z-index:1;}',
       '#__hce-style-panel .sw.on{outline:2px solid #1a1a1a;outline-offset:2px;}',
+      '#__hce-style-panel .sw.original::after{content:"";position:absolute;bottom:-4px;left:50%;',
+      'transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:#1a1a1a;}',
       // Recent swatch × delete on hover
-      '#__hce-style-panel .recent .sw .x{position:absolute;top:-5px;right:-5px;width:14px;height:14px;',
+      '#__hce-style-panel .recent .sw .x{position:absolute;top:-5px;right:-5px;width:13px;height:13px;',
       'background:#1a1a1a;color:#fff;border-radius:50%;border:none;cursor:pointer;font-size:9px;',
-      'line-height:14px;text-align:center;padding:0;display:none;}',
+      'line-height:13px;text-align:center;padding:0;display:none;}',
       '#__hce-style-panel .recent .sw:hover .x{display:block;}',
       '#__hce-style-panel .recent-label{margin-top:8px;}',
+      // Number input next to size slider
+      '#__hce-style-panel .num-input{width:48px;height:22px;padding:0 6px;background:#fafaf9;',
+      'border:1px solid #e7e5e4;border-radius:4px;font:11px ui-monospace,SFMono-Regular,monospace;',
+      'color:#1a1a1a;text-align:right;-moz-appearance:textfield;}',
+      '#__hce-style-panel .num-input::-webkit-outer-spin-button,',
+      '#__hce-style-panel .num-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}',
+      '#__hce-style-panel .num-input:focus{outline:none;border-color:#1a1a1a;box-shadow:0 0 0 2px rgba(26,26,26,.06);}',
+      // Save-to-recent button under picker
+      '#__hce-style-panel .save-row{display:flex;justify-content:flex-end;}',
+      '#__hce-style-panel .save-btn{background:#1a1a1a;color:#fff;border:none;border-radius:5px;',
+      'padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;',
+      'align-items:center;gap:4px;}',
+      '#__hce-style-panel .save-btn:hover{background:#44403c;}',
+      '#__hce-style-panel .save-btn:disabled{opacity:.4;cursor:default;}',
       // Custom expander
       '#__hce-style-panel .more-toggle{background:none;border:none;color:#737373;font-size:11px;',
       'cursor:pointer;padding:6px 0 0;display:flex;align-items:center;gap:4px;width:100%;text-align:left;',
@@ -906,9 +990,11 @@ export function buildIframeScript() {
         + '</div>'
       + '</div>'
 
-      // Size
+      // Size — slider + editable number
       + '<div class="row">'
-        + '<div class="row-head"><span class="label">Size</span><span class="val"><span class="sp-fs-v">14</span>px</span></div>'
+        + '<div class="row-head"><span class="label">Size</span>'
+          + '<input type="number" class="num-input sp-fs-input" min="6" max="200" step="1">'
+        + '</div>'
         + '<input type="range" class="sp-fs" min="10" max="120">'
       + '</div>'
 
@@ -927,6 +1013,7 @@ export function buildIframeScript() {
         + '<div class="picker sp-picker">'
           + '<div class="sv sp-sv"><div class="sv-thumb sp-sv-thumb"></div></div>'
           + '<div class="hue sp-hue"><div class="hue-thumb sp-hue-thumb"></div></div>'
+          + '<div class="save-row"><button class="save-btn sp-save" type="button">＋ Save</button></div>'
         + '</div>'
       + '</div>'
 
@@ -1051,12 +1138,13 @@ export function buildIframeScript() {
         + 'linear-gradient(to right,#fff,transparent),'
         + 'hsl(' + hsvH + ',100%,50%)';
     }
+    function currentPickerHex() { return hsvToHex(hsvH, hsvS, hsvV); }
     function applyPickerColor() {
-      var hex = hsvToHex(hsvH, hsvS, hsvV);
+      var hex = currentPickerHex();
       apply('color', hex);
       markActiveSwatch(hex);
       refreshResetState(hex);
-      pushRecent(hex);
+      // Don't auto-push to Recent — only on explicit Save click.
     }
     function setPickerFromHex(hex) {
       var hsv = hexToHsv(hex);
@@ -1108,12 +1196,25 @@ export function buildIframeScript() {
       applyPickerColor();
     });
 
-    // Font size slider
+    // Save button — explicit "add current picker color to Recent"
+    var saveBtn = stylePanel.querySelector('.sp-save');
+    saveBtn.addEventListener('click', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      pushRecent(currentPickerHex());
+    });
+
+    // Font size — slider + number input, kept in sync
     var fs = stylePanel.querySelector('.sp-fs');
-    fs.oninput = function() {
-      apply('fontSize', fs.value + 'px');
-      stylePanel.querySelector('.sp-fs-v').textContent = fs.value;
-    };
+    var fsInput = stylePanel.querySelector('.sp-fs-input');
+    function applyFontSize(n) {
+      n = Math.max(6, Math.min(200, parseInt(n, 10) || 14));
+      apply('fontSize', n + 'px');
+      fs.value = Math.min(parseInt(fs.max, 10), n);
+      fsInput.value = n;
+    }
+    fs.oninput = function() { applyFontSize(fs.value); };
+    fsInput.addEventListener('input',  function() { applyFontSize(fsInput.value); });
+    fsInput.addEventListener('change', function() { applyFontSize(fsInput.value); });
     // Alignment
     stylePanel.querySelectorAll('.alignrow button').forEach(function(btn) {
       btn.onclick = function() {
@@ -1243,12 +1344,20 @@ export function buildIframeScript() {
     if (!stylePanel) return;
     var row = stylePanel.querySelector('.sp-palette');
     row.innerHTML = '';
+    // Build display list: [original, ...5 recommended], dedupe.
+    var orig = (styleTarget && styleTarget.__hceOriginalColor) ? styleTarget.__hceOriginalColor.toLowerCase() : null;
+    var list = [];
+    if (orig) list.push(orig);
     currentPalette.forEach(function(c) {
+      if (list.indexOf(c.toLowerCase()) === -1) list.push(c);
+    });
+    list = list.slice(0, 6);
+    list.forEach(function(c, idx) {
       var b = document.createElement('button');
-      b.className = 'sw';
+      b.className = 'sw' + (orig && c.toLowerCase() === orig ? ' original' : '');
       b.setAttribute('data-color', c);
       b.style.background = c;
-      b.title = c;
+      b.title = (orig && c.toLowerCase() === orig) ? (c + ' (original)') : c;
       b.addEventListener('click', function() {
         if (stylePanel.__hceApply) stylePanel.__hceApply('color', c);
         markActiveSwatch(c);
@@ -1340,8 +1449,9 @@ export function buildIframeScript() {
 
     // Size + alignment
     var fs = pxNum(cs.fontSize);
-    p.querySelector('.sp-fs').value = fs;
-    p.querySelector('.sp-fs-v').textContent = fs;
+    p.querySelector('.sp-fs').value = Math.min(120, fs);
+    var fsInput = p.querySelector('.sp-fs-input');
+    if (fsInput) fsInput.value = fs;
     p.querySelectorAll('.alignrow button').forEach(function(b){
       b.classList.toggle('on', b.dataset.align === cs.textAlign);
     });
@@ -1369,6 +1479,17 @@ export function buildIframeScript() {
     if (stylePanel) stylePanel.style.display = 'none';
     styleTarget = null;
   };
+
+  // Click anywhere outside the panel (and not on the toolbar that owns it)
+  // closes the panel. Capture phase so we beat other listeners.
+  document.addEventListener('mousedown', function(e) {
+    if (!stylePanel || stylePanel.style.display !== 'block') return;
+    if (e.target.closest && (
+        e.target.closest('#__hce-style-panel') ||
+        e.target.closest('#__hce-tools') ||
+        e.target.closest('#__hce-handle'))) return;
+    hideStylePanel();
+  }, true);
   function toggleStylePanel(el) {
     if (stylePanel && stylePanel.style.display === 'block' && styleTarget === el) {
       hideStylePanel();
